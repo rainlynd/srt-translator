@@ -12,7 +12,6 @@ SRT Translator is an Electron-based desktop application designed for transcribin
     - [User Interface](#user-interface)
     - [Configuration](#configuration)
     - [Processing \& Control](#processing--control)
-  - [Tech Stack](#tech-stack)
   - [Prerequisites](#prerequisites)
   - [Setup and Installation](#setup-and-installation)
     - [For End-Users (Packaged Application)](#for-end-users-packaged-application)
