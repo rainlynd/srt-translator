@@ -60,19 +60,6 @@ SRT Translator is an Electron-based desktop application designed for transcribin
 *   "Retry" functionality for files that failed or were cancelled.
 *   "Hold-to-activate" mechanism for starting SRT translation batches to prevent accidental clicks.
 
-## Tech Stack
-
-*   **Core Framework:** Electron
-*   **Main Process Logic:** Node.js
-*   **User Interface:** HTML, CSS, JavaScript
-*   **AI Translation:** Google Gemini API
-*   **Transcription Engines:** Python, WhisperX, FunASR
-*   **Audio/Video Processing:** FFmpeg
-*   **Key Libraries/Modules:**
-    *   Node.js: `@google/generative-ai`, `electron-squirrel-startup`
-    *   Python: `whisperx` (and its dependencies like `torch`, `torchaudio`), `funasr`, `pyannote.audio`, `nltk`, `numpy`, `pandas`
-*   **Build & Packaging:** Electron Forge, Webpack, PyInstaller (for the Python transcription script)
-
 ## Prerequisites
 
 *   **Node.js:** Required for running and developing the application.
