@@ -83,7 +83,7 @@ SRT Translator is an Electron-based desktop application designed for transcribin
 ## Setup and Installation
 
 ### For End-Users (Packaged Application)
-1.  Download the latest release for your operating system from the [Releases Page](https://github.com/your-username/srt-translator/releases) (Replace with actual link).
+1.  Download the latest release for your operating system from the [Releases Page](https://github.com/rainlynd/srt-translator/releases) (Replace with actual link).
 2.  Install the application following standard procedures for your OS.
 3.  Launch SRT Translator.
 4.  Navigate to the **Settings** tab.
@@ -93,7 +93,7 @@ SRT Translator is an Electron-based desktop application designed for transcribin
 ### For Developers
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/your-username/srt-translator.git
+    git clone https://github.com/rainlynd/srt-translator.git
     ```
     (Replace with actual repository URL)
 2.  Navigate to the project directory:
