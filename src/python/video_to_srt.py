@@ -36,103 +36,55 @@ def get_ffmpeg_path():
     """Determines the path to the ffmpeg executable."""
     ffmpeg_exe_name = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
 
-    # Check if running in a PyInstaller bundle or similar frozen environment
-    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-        # Running in a PyInstaller bundle, potentially within an Electron app.
+    # Path 1: Relative to the script, assuming Electron Forge structure
+    # Script is typically in '.../resources/app(.asar.unpacked)/src/python/' or '.../resources/python/'
+    # FFmpeg is typically in '.../resources/ffmpeg/'
+    try:
+        # __file__ is the path to the current script (video_to_srt.py)
+        script_path = os.path.abspath(__file__)
+        script_dir = os.path.dirname(script_path) # e.g., .../resources/python
+
+        # Go up one level from script_dir to get to the parent 'resources' (or equivalent) directory
+        parent_of_script_dir = os.path.dirname(script_dir)
+
+        # Path A: '.../resources/ffmpeg/ffmpeg.exe'
+        ffmpeg_path_electron = os.path.join(parent_of_script_dir, 'ffmpeg', ffmpeg_exe_name)
+        if os.path.exists(ffmpeg_path_electron):
+            return ffmpeg_path_electron
         
-        # --- BEGIN NEW LOGIC for Electron Forge + PyInstaller ---
-        # Try to find ffmpeg relative to the original location of the PyInstaller executable
-        # within the Electron app structure.
-        # Assumes ffmpeg.exe is in '[AppRoot]/resources/'
-        try:
-            # sys.argv[0] might point to the original path of the .exe
-            # For Electron, this path is often relative to the app's root.
-            # We need to make it absolute to reliably navigate from it.
-            original_exe_abs_path = os.path.abspath(sys.argv[0])
-            original_exe_dir = os.path.dirname(original_exe_abs_path)
+        # Path B: If script is in '.../resources/app/python' and ffmpeg in '.../resources/ffmpeg'
+        # then parent_of_script_dir is '.../resources/app', its parent is '.../resources'
+        resources_dir_candidate = os.path.dirname(parent_of_script_dir)
+        ffmpeg_path_electron_alt = os.path.join(resources_dir_candidate, 'ffmpeg', ffmpeg_exe_name)
+        if os.path.exists(ffmpeg_path_electron_alt):
+            return ffmpeg_path_electron_alt
 
-            # Scenario 1: PyInstaller exe is directly in '[AppRoot]/resources/'
-            # e.g., [AppRoot]/resources/my_script.exe
-            # ffmpeg is at [AppRoot]/resources/ffmpeg.exe (sibling)
-            electron_ffmpeg_path_scenario1 = os.path.join(original_exe_dir, ffmpeg_exe_name)
-            if os.path.exists(electron_ffmpeg_path_scenario1):
-                return electron_ffmpeg_path_scenario1
-            
-            # Scenario 2: PyInstaller exe is in a subdirectory of '[AppRoot]/resources/',
-            # e.g., [AppRoot]/resources/python_bundle/my_script.exe
-            # ffmpeg is at [AppRoot]/resources/ffmpeg.exe
-            # In this case, original_exe_dir is '[AppRoot]/resources/python_bundle/'
-            # So, its parent is '[AppRoot]/resources/'
-            electron_resources_dir_candidate = os.path.dirname(original_exe_dir)
-            electron_ffmpeg_path_scenario2 = os.path.join(electron_resources_dir_candidate, ffmpeg_exe_name)
-            if os.path.exists(electron_ffmpeg_path_scenario2):
-                return electron_ffmpeg_path_scenario2
+    except Exception: # pylint: disable=broad-except
+        # This might happen if __file__ is not defined as expected (e.g. in some frozen contexts not via PyInstaller)
+        pass # Continue to other checks
 
-        except Exception: # pylint: disable=broad-except
-            pass # Continue to other checks if sys.argv[0] based path fails
-        # --- END NEW LOGIC ---
-
-        # Original PyInstaller logic (relative to _MEIPASS or sys.executable in _MEIPASS)
-        # This is for when ffmpeg is bundled *inside* or alongside the PyInstaller temp extraction.
-        bundle_dir = sys._MEIPASS # This is the temporary extraction directory
-
-        # Path relative to sys.executable (which is inside bundle_dir for PyInstaller)
-        # os.path.dirname(sys.executable) is effectively bundle_dir.
-        # Original code's 'packaged_path': ffmpeg in 'ffmpeg' subdirectory of _MEIPASS
-        meipass_sub_ffmpeg_path = os.path.join(bundle_dir, 'ffmpeg', ffmpeg_exe_name)
-        if os.path.exists(meipass_sub_ffmpeg_path):
-            return meipass_sub_ffmpeg_path
+    # Path 2: Development mode (script run directly from project_root/src/python)
+    # ffmpeg is in project_root/ffmpeg/
+    try:
+        script_dir_dev = os.path.dirname(os.path.abspath(__file__)) # project_root/src/python
+        # project_root is two levels up from src/python
+        project_root_dev = os.path.abspath(os.path.join(script_dir_dev, '..', '..'))
         
-        # Check for ffmpeg directly in _MEIPASS root (common for PyInstaller data files)
-        meipass_root_ffmpeg_path = os.path.join(bundle_dir, ffmpeg_exe_name)
-        if os.path.exists(meipass_root_ffmpeg_path):
-            return meipass_root_ffmpeg_path
+        dev_path_ffmpeg_subdir = os.path.join(project_root_dev, 'ffmpeg', ffmpeg_exe_name)
+        if os.path.exists(dev_path_ffmpeg_subdir):
+            return dev_path_ffmpeg_subdir
+    except Exception: # pylint: disable=broad-except
+        pass
 
-        # Fallback: path relative to script's location within bundle (if __file__ is meaningful inside _MEIPASS)
-        # For PyInstaller, __file__ usually refers to the script's path within the extracted bundle.
-        script_dir_in_bundle = os.path.dirname(os.path.abspath(__file__)) # Should be inside _MEIPASS
-        
-        # Original code's 'fallback_packaged_path':
-        # ffmpeg in 'ffmpeg' subdirectory relative to the script's dir inside _MEIPASS
-        script_relative_ffmpeg_path = os.path.join(script_dir_in_bundle, 'ffmpeg', ffmpeg_exe_name)
-        if os.path.exists(script_relative_ffmpeg_path):
-            return script_relative_ffmpeg_path
-        
-        # Original code's 'fallback_packaged_path_up':
-        # ffmpeg in 'ffmpeg' subdirectory one level up from script's dir inside _MEIPASS
-        script_relative_up_ffmpeg_path = os.path.join(os.path.dirname(script_dir_in_bundle), 'ffmpeg', ffmpeg_exe_name)
-        if os.path.exists(script_relative_up_ffmpeg_path):
-            return script_relative_up_ffmpeg_path
-
-    else:
-        # Running as a script (development mode or non-PyInstaller frozen app)
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        # Assuming script is in src/python/, project root is two levels up.
-        project_root_dev = os.path.abspath(os.path.join(script_dir, '..', '..'))
-        
-        # Standard development path
-        dev_path = os.path.join(project_root_dev, 'ffmpeg', ffmpeg_exe_name)
-        if os.path.exists(dev_path):
-            return dev_path
-
-        # Fallback for development/non-PyInstaller if ffmpeg is in 'resources' at project root
-        # This might also catch cases where the script is run by a bundled Python interpreter
-        # in an Electron app, and project_root_dev correctly points to the app's root.
-        dev_resources_path = os.path.join(project_root_dev, 'resources', ffmpeg_exe_name)
-        if os.path.exists(dev_resources_path):
-            return dev_resources_path
-            
-    # If ffmpeg is not found in any of the expected locations
-    # Fallback to checking if ffmpeg is in PATH (most reliable last resort)
-    # shutil.which is more robust for checking PATH
+    # Path 3: Check system PATH (last resort)
     ffmpeg_in_path = shutil.which(ffmpeg_exe_name)
     if ffmpeg_in_path:
         return ffmpeg_in_path
 
     raise FileNotFoundError(
         f"ffmpeg ('{ffmpeg_exe_name}') not found. Please ensure ffmpeg is in your system PATH, "
-        "or in the 'ffmpeg' directory at the project root (for development), "
-        "or packaged correctly (e.g., in the 'resources' folder for Electron builds alongside or one level above the Python executable)."
+        f"or bundled correctly with the Electron Forge application (e.g., in 'resources/ffmpeg/'), "
+        f"or in the project root 'ffmpeg/' directory for development."
     )
 
 def extract_audio_from_video(video_input_path, target_audio_path, ffmpeg_executable_path):
