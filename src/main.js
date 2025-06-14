@@ -6,6 +6,7 @@ const settingsManager = require('./settingsManager');
 const geminiService = require('./geminiService');
 const { processSRTFile, setTranslationCancellation } = require('./translationOrchestrator');
 const transcriptionService = require('./transcriptionService'); // Added
+const advancedTranslationService = require('./advancedTranslationService'); // Added for new pipeline
 const { v4: uuidv4 } = require('uuid'); // For generating unique job IDs
 const EventEmitter = require('events');
 const srtParser = require('./srtParser'); // Added for GFC
@@ -1280,75 +1281,108 @@ class SimplifiedTranslationManager {
     async processFile(fileJob) { // fileJob is an instance of FileJob
         const { jobId, filePath, type, srtContent, globalSettings, allSettings } = fileJob;
         const identifierForLogging = path.basename(filePath);
+        const pythonPipelineConfig = allSettings.pythonPipeline || {}; // Extract python pipeline specific settings
 
         this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, {
             timestamp: Date.now(),
-            message: `[${identifierForLogging}] SimplifiedTM: Starting translation for Job ID: ${jobId}. Type: ${type}`,
+            message: `[${identifierForLogging}] SimplifiedTM: Starting ADVANCED translation for Job ID: ${jobId}. Type: ${type}`,
             level: 'info'
         });
-        this.activeOrchestratorJobs.set(jobId, true);
+        this.activeOrchestratorJobs.set(jobId, true); // Track active job
 
-        // Reset translation orchestrator's specific cancel flag for this job
-        // The global flag in translationOrchestrator.js is set by GFC's handleGlobalCancel via this.cancelJob
-        setTranslationCancellation(false, jobId);
+        // Callbacks for advancedTranslationService
+        const progressCb = (progressData) => {
+            if (!this.activeOrchestratorJobs.has(jobId)) return; // Job was cancelled
+            this.sendIpcMessage(ipcChannels.ADVANCED_TRANSLATION_PROGRESS, {
+                jobId,
+                filePath, // Original file path for UI tracking
+                progress: progressData.numerical_progress !== undefined ? progressData.numerical_progress : (progressData.percentage || 0),
+                status: progressData.message || 'Processing...',
+                stage: progressData.stage || (type === 'video_translation_phase' ? 'advanced_translating_video' : 'advanced_translating_srt'),
+                details: progressData.details || {}
+            });
+        };
+
+        const logCb = (level, message) => {
+            this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, {
+                timestamp: Date.now(),
+                message: `[${identifierForLogging}] AdvancedPipeline: ${message}`,
+                level
+            });
+        };
 
         try {
-            // **** EXTRACT sourceLanguageOfSrt ****
-            // globalSettings here are specific to this job, passed from GFC.addJob
-            const sourceLang = globalSettings.sourceLanguageOfSrt;
+            let operationPromise;
+            let tempSrtPath = null;
 
-            const result = await processSRTFile(
-                filePath, // Identifier for UI and logging (original file path)
-                srtContent, // Actual SRT content to translate (already parsed and passed in FileJob)
-                globalSettings.targetLanguageFullName, // Pass the full name for prompt
-                sourceLang, // **** PASS IT HERE ****
-                { ...allSettings, targetLanguageCode: globalSettings.targetLanguageCode, targetLanguageFullName: globalSettings.targetLanguageFullName }, // Pass both to orchestrator via settings
-                (fp, progress, statusText, chunkInfo) => { // Progress callback
-                    // Check if this job was cancelled by GFC while orchestrator was running
-                    if (!this.activeOrchestratorJobs.has(jobId)) { // If job was cancelled and removed
-                         setTranslationCancellation(true, jobId); // Signal orchestrator to stop this specific job
-                         return;
-                    }
-                    this.sendIpcMessage(ipcChannels.TRANSLATION_PROGRESS_UPDATE, {
-                        filePath: fp, // This should be the original filePath from FileJob
-                        jobId,
-                        progress,
-                        status: statusText,
-                        stage: 'translating', // This manager only handles translation phase
-                        chunkInfo,
-                        type: type === 'video_translation_phase' ? 'video' : 'srt'
-                    });
-                },
-                (timestamp, message, level) => { // Log callback
-                    this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, {
-                        timestamp,
-                        message: `[${identifierForLogging}] Orchestrator: ${message}`,
-                        level
-                    });
-                },
-                jobId, // Pass job ID to orchestrator
-                this.gfc // Pass GFC instance to orchestrator
-            );
-
-            // Check again if job was cancelled while orchestrator was finishing
-            if (!this.activeOrchestratorJobs.has(jobId)) {
-                console.log(`SimplifiedTM: Job ${jobId} was cancelled during/after orchestrator completion. GFC already notified.`);
-                // GFC.jobCompleted would have been called by cancelJob if it was an active cancel.
-                // If it was a passive cancel (global flag caught by orchestrator), result.status might be 'Cancelled'.
-                // Ensure GFC is notified correctly.
-                if (result.status !== 'Cancelled') { // If orchestrator didn't self-cancel due to global flag
-                     this.gfc.jobCompleted(jobId, 'Cancelled', 'Cancelled during finalization.');
-                } else {
-                    this.gfc.jobCompleted(jobId, result.status, result.error, result.outputPath);
+            if (type === 'srt') {
+                operationPromise = advancedTranslationService.startSrtTranslationPipeline(
+                    jobId,
+                    filePath, // Original SRT file path
+                    globalSettings.sourceLanguageOfSrt,
+                    globalSettings.targetLanguageCode,
+                    pythonPipelineConfig,
+                    progressCb,
+                    logCb
+                );
+            } else if (type === 'video_translation_phase') {
+                if (!srtContent) {
+                    throw new Error('SRT content is missing for video_translation_phase.');
                 }
+                // Create a temporary SRT file for the Python script
+                const tempDir = path.join(app.getPath('userData'), 'advanced_pipeline_cache', jobId);
+                await fs.mkdir(tempDir, { recursive: true });
+                tempSrtPath = path.join(tempDir, `temp_asr_${jobId}.srt`);
+                await fs.writeFile(tempSrtPath, srtContent, 'utf8');
+                logCb('info', `Temporary ASR SRT for video translation saved to ${tempSrtPath}`);
+
+                operationPromise = advancedTranslationService.startSrtTranslationPipeline( // Yes, use srtTranslationPipeline for ASR output
+                    jobId,
+                    tempSrtPath, // Path to the temporary SRT file
+                    globalSettings.sourceLanguageOfSrt, // This should be the detected ASR language
+                    globalSettings.targetLanguageCode,
+                    pythonPipelineConfig,
+                    progressCb,
+                    logCb
+                );
             } else {
-                 this.gfc.jobCompleted(jobId, result.status, result.error, result.outputPath);
+                throw new Error(`Unsupported job type for Advanced Pipeline: ${type}`);
+            }
+
+            const result = await operationPromise; // result: { srtFilePath }
+
+            if (!this.activeOrchestratorJobs.has(jobId)) { // Check if cancelled during async operation
+                logCb('warn', `Job ${jobId} was cancelled during advanced pipeline execution. GFC should have been notified.`);
+                // If GFC wasn't notified of cancellation status by cancelJob, do it now.
+                // This path assumes cancelJob already informed GFC.
+            } else {
+                this.gfc.jobCompleted(jobId, 'Success', null, result.srtFilePath);
+                this.sendIpcMessage(ipcChannels.ADVANCED_TRANSLATION_COMPLETE, {
+                    jobId, filePath, status: 'Success', outputPath: result.srtFilePath
+                });
+            }
+
+            // Clean up temporary SRT file if created
+            if (tempSrtPath) {
+                try {
+                    await fs.unlink(tempSrtPath);
+                    logCb('info', `Temporary SRT file ${tempSrtPath} deleted.`);
+                } catch (unlinkError) {
+                    logCb('warn', `Failed to delete temporary SRT file ${tempSrtPath}: ${unlinkError.message}`);
+                }
             }
 
         } catch (error) {
-            console.error(`SimplifiedTM: Unhandled error processing job ${jobId} for ${filePath}: ${error.message}`);
-            if (this.activeOrchestratorJobs.has(jobId)) { // Only notify GFC if not already handled by a cancel
-                this.gfc.jobCompleted(jobId, 'Error', `Unhandled Orchestrator Error: ${error.message}`);
+            logCb('error', `Error in Advanced Pipeline for job ${jobId} (${filePath}): ${error.message}`);
+            if (this.activeOrchestratorJobs.has(jobId)) {
+                this.gfc.jobCompleted(jobId, 'Error', error.message);
+                this.sendIpcMessage(ipcChannels.ADVANCED_TRANSLATION_COMPLETE, {
+                    jobId, filePath, status: 'Error', error: error.message
+                });
+            }
+            // Ensure temp file is cleaned up on error too
+            if (tempSrtPath) {
+                try { await fs.unlink(tempSrtPath); } catch (e) { /* ignore */ }
             }
         } finally {
             this.activeOrchestratorJobs.delete(jobId);
@@ -1357,21 +1391,25 @@ class SimplifiedTranslationManager {
 
     cancelJob(jobIdToCancel) {
         if (this.activeOrchestratorJobs.has(jobIdToCancel)) {
-            console.log(`SimplifiedTM: Received cancel for active job ${jobIdToCancel}. Signalling orchestrator.`);
-            setTranslationCancellation(true, jobIdToCancel); // Signal orchestrator for this specific job
-            
-            // Orchestrator will eventually call its callbacks which lead to gfc.jobCompleted.
-            // To ensure GFC knows it's a cancellation, we can proactively tell GFC.
-            // However, the orchestrator's result.status should be 'Cancelled'.
-            // For now, let the orchestrator finish and report 'Cancelled'.
-            // If orchestrator doesn't handle the flag quickly, this might delay GFC update.
-            // Alternative:
-            // this.gfc.jobCompleted(jobIdToCancel, 'Cancelled', 'Cancelled by GFC signal.');
-            // this.activeOrchestratorJobs.delete(jobIdToCancel);
-            // This needs careful thought: if we tell GFC it's cancelled, but orchestrator still writes a file, it's inconsistent.
-            // Best is to rely on orchestrator respecting the flag and returning 'Cancelled'.
+            console.log(`SimplifiedTM: Received cancel for active ADVANCED job ${jobIdToCancel}. Signalling service.`);
+            this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, {
+                timestamp: Date.now(),
+                message: `[Job: ${jobIdToCancel}] SimplifiedTM: Cancellation signal sent to AdvancedTranslationService.`,
+                level: 'warn'
+            });
+            advancedTranslationService.cancelAdvancedTranslation(jobIdToCancel);
+            // The advancedTranslationService's promise will reject or resolve.
+            // The 'close' event handler in advancedTranslationService should lead to gfc.jobCompleted.
+            // To ensure UI updates quickly, we can proactively tell GFC.
+            // However, the service might still write a partial file if cancellation is slow.
+            // For now, rely on the service's own error/close handling to update GFC.
+            // GFC's cancelVideoTranslationPhaseJobs or cancelSrtJobs would have already marked the job for cancellation.
+            // This specific cancelJob is more about stopping the active Python process.
+            // GFC will call jobCompleted with 'Cancelled' status when its cancel methods are invoked.
+            // So, we don't need to call gfc.jobCompleted here again for cancellation.
+            this.activeOrchestratorJobs.delete(jobIdToCancel); // Remove from active tracking here
         } else {
-            console.log(`SimplifiedTM: Received cancel for job ${jobIdToCancel}, but it's not actively tracked here (might be already finished or not started by this TM).`);
+            console.log(`SimplifiedTM: Received cancel for ADVANCED job ${jobIdToCancel}, but it's not actively tracked here.`);
         }
     }
 }

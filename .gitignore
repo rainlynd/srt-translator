@@ -97,3 +97,11 @@ out/
 faster-large-v3-turbo/
 
 ffmpeg/
+
+foreign/
+
+tests/
+
+.pytest_cache/
+
+advanced_translator_pipeline/__pycache__/

@@ -59,14 +59,46 @@ You will receive context from previous data inside '<previous_texts>' tags (if a
   tpmLimit: 1000000, // Tokens Per Minute limit for Gemini API
   tpmOutputEstimationFactor: 2.5, // New: Factor to estimate output tokens based on input tokens for TPM pre-deduction
   
-  // Transcription Settings (Simplified for WhisperX)
-  transcriptionSourceLanguage: null, // null for "Auto-detect"
-  enableDiarization: false,
-  transcriptionComputeType: "int8", // Default for WhisperX as per plan
-  huggingFaceToken: '', // For diarization if enableDiarization is true
-  transcriptionConditionOnPreviousText: false, // Default as per plan
-  transcriptionThreads: 8, // Default as per plan
-  thinkingBudget: 0, // Default to disabled
+  // Transcription Settings (Simplified for WhisperX) - These are for the current JS-based transcription
+  transcriptionSourceLanguage: null, // null for "Auto-detect" (Used by current video_to_srt.py)
+  enableDiarization: false, // Used by current video_to_srt.py
+  // transcriptionComputeType: "int8", // Moved to pythonPipeline.asrSettings.computeType
+  huggingFaceToken: '', // Used by current video_to_srt.py for diarization
+  // transcriptionConditionOnPreviousText: false, // Moved to pythonPipeline.asrSettings
+  // transcriptionThreads: 8, // Moved to pythonPipeline.asrSettings
+  thinkingBudget: 0, // Default to disabled (Used by current translationOrchestrator)
+
+  // Python Advanced Translation Pipeline Settings
+  pythonPipeline: {
+    asrSettings: {
+      modelName: "large-v3", // WhisperX model name (e.g., "large-v2", "large-v3", "medium.en")
+      device: "cuda", // "cuda" or "cpu" for ASR
+      computeType: "float16", // e.g., "float16", "int8" (for WhisperX)
+      conditionOnPreviousText: false,
+      threads: 4, // Number of threads for ASR processing (if applicable to backend)
+      diarizationDevice: "cuda", // "cuda" or "cpu" for diarization model
+      // huggingFaceToken is still top-level as it's used by current transcription too. Python can access it from allSettings.
+    },
+    spacyModelName: "en_core_web_trf", // spaCy model for NLP segmentation
+    segmentation: {
+      nlpMaxChars: 150, // Max characters for initial NLP-based sentence splitting
+      meaningSplitMinChars: 80, // Min characters for a meaning-based segment (Gemini)
+      meaningSplitMaxChars: 250, // Max characters for a meaning-based segment (Gemini)
+    },
+    terminology: {
+      minLength: 50, // Min length of text chunk for terminology extraction
+      maxLength: 500, // Max length of text chunk for terminology extraction
+    },
+    geminiSettings: { // Specific Gemini settings for the Python pipeline if they need to differ
+      temperature: 0.3, // Can inherit from top-level or be specific
+      topP: 0.95,       // Can inherit from top-level or be specific
+      // Add other Gemini params if needed, e.g., for different models per step
+    },
+    cacheSettings: {
+      keepIntermediateFiles: false, // Whether to keep intermediate files in the job's cache directory
+    },
+    // Add other pipeline-wide Python settings here if necessary
+  }
 };
 
 /**
@@ -102,12 +134,40 @@ async function loadSettings() {
     if (settings.hasOwnProperty('errorLogDirectory')) {
       delete settings.errorLogDirectory;
     }
-    if (settings.hasOwnProperty('translationRetries')) { // ADDED: Handle deprecated key
+    if (settings.hasOwnProperty('translationRetries')) {
       delete settings.translationRetries;
       console.log('Removed deprecated "translationRetries" setting during load.');
     }
-    // Merge with defaults to ensure all keys are present if settings file is partial
-    return { ...defaultSettings, ...settings };
+    // Ensure pythonPipeline and its nested objects exist if loading from older settings
+    const mergedSettings = { ...defaultSettings, ...settings };
+    if (!mergedSettings.pythonPipeline) {
+      mergedSettings.pythonPipeline = { ...defaultSettings.pythonPipeline };
+    } else { // Deep merge for nested objects within pythonPipeline
+      mergedSettings.pythonPipeline.asrSettings = { ...defaultSettings.pythonPipeline.asrSettings, ...mergedSettings.pythonPipeline.asrSettings };
+      mergedSettings.pythonPipeline.segmentation = { ...defaultSettings.pythonPipeline.segmentation, ...mergedSettings.pythonPipeline.segmentation };
+      mergedSettings.pythonPipeline.terminology = { ...defaultSettings.pythonPipeline.terminology, ...mergedSettings.pythonPipeline.terminology };
+      mergedSettings.pythonPipeline.geminiSettings = { ...defaultSettings.pythonPipeline.geminiSettings, ...mergedSettings.pythonPipeline.geminiSettings };
+      mergedSettings.pythonPipeline.cacheSettings = { ...defaultSettings.pythonPipeline.cacheSettings, ...mergedSettings.pythonPipeline.cacheSettings };
+    }
+
+    // Migrate old top-level transcription settings to new pythonPipeline structure if they exist and pythonPipeline ones don't
+    if (settings.hasOwnProperty('transcriptionComputeType') && !mergedSettings.pythonPipeline.asrSettings.hasOwnProperty('computeType')) {
+      mergedSettings.pythonPipeline.asrSettings.computeType = settings.transcriptionComputeType;
+      delete mergedSettings.transcriptionComputeType; // Remove old top-level key after migration
+      console.log('Migrated transcriptionComputeType to pythonPipeline.asrSettings.computeType');
+    }
+    if (settings.hasOwnProperty('transcriptionConditionOnPreviousText') && !mergedSettings.pythonPipeline.asrSettings.hasOwnProperty('conditionOnPreviousText')) {
+      mergedSettings.pythonPipeline.asrSettings.conditionOnPreviousText = settings.transcriptionConditionOnPreviousText;
+      delete mergedSettings.transcriptionConditionOnPreviousText;
+      console.log('Migrated transcriptionConditionOnPreviousText to pythonPipeline.asrSettings.conditionOnPreviousText');
+    }
+    if (settings.hasOwnProperty('transcriptionThreads') && !mergedSettings.pythonPipeline.asrSettings.hasOwnProperty('threads')) {
+      mergedSettings.pythonPipeline.asrSettings.threads = settings.transcriptionThreads;
+      delete mergedSettings.transcriptionThreads;
+      console.log('Migrated transcriptionThreads to pythonPipeline.asrSettings.threads');
+    }
+
+    return mergedSettings;
   } catch (error) {
     if (error.code === 'ENOENT') {
       // File doesn't exist, save default settings and return them

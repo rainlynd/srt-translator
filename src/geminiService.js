@@ -1,8 +1,8 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+import { GoogleGenAI } from "@google/genai";
 
-// Store the initialized model instance to reuse
-let genAIInstance;
-let modelInstances = { primary: null, retry: null }; // Modified
+// Store the initialized AI client and model names
+let aiClient;
+let modelNames = { primary: null, retry: null }; // Modified
 
 /**
  * Initializes the GenerativeModel from the SDK.
@@ -11,22 +11,24 @@ let modelInstances = { primary: null, retry: null }; // Modified
  * @param {string} modelName - The name of the Gemini model to use.
  * @param {string} modelAlias - The alias for this model instance ('primary' or 'retry').
  */
-function initializeGeminiModel(apiKey, modelName, modelAlias = 'primary') { // Modified
+export function initializeGeminiModel(apiKey, modelName, modelAlias = 'primary') { // Modified
   if (!apiKey) {
     throw new Error('API key is required to initialize Gemini model.');
   }
   if (!modelName) {
     throw new Error(`Model name is required to initialize Gemini model for alias '${modelAlias}'.`); // Modified
   }
-  if (!genAIInstance) { // Initialize genAIInstance only if it doesn't exist
-    genAIInstance = new GoogleGenerativeAI(apiKey);
+  if (!aiClient) { // Initialize aiClient only if it doesn't exist
+    aiClient = new GoogleGenAI({ apiKey });
   }
   try {
-    modelInstances[modelAlias] = genAIInstance.getGenerativeModel({ model: modelName }); // Modified
-    console.log(`Gemini model "${modelName}" initialized for alias '${modelAlias}'.`); // Modified
+    // With the new SDK, we don't get a model instance here, just store the name.
+    // The actual model interaction happens via aiClient.models.generateContent or .countTokens
+    modelNames[modelAlias] = modelName; // Modified
+    console.log(`Gemini model name "${modelName}" configured for alias '${modelAlias}'.`); // Modified
   } catch (error) {
-    console.error(`Failed to initialize Gemini model "${modelName}" for alias '${modelAlias}':`, error); // Modified
-    modelInstances[modelAlias] = null; // Ensure it's null if initialization fails
+    console.error(`Failed to configure Gemini model name "${modelName}" for alias '${modelAlias}':`, error); // Modified
+    modelNames[modelAlias] = null; // Ensure it's null if configuration fails
     throw error; // Re-throw to allow caller to handle
   }
 }
@@ -36,8 +38,8 @@ function initializeGeminiModel(apiKey, modelName, modelAlias = 'primary') { // M
  * @param {string} modelAlias - The alias to check ('primary' or 'retry').
  * @returns {boolean} - True if initialized, false otherwise.
  */
-function isInitialized(modelAlias = 'primary') { // Modified
-  return !!modelInstances[modelAlias]; // Modified
+export function isInitialized(modelAlias = 'primary') { // Modified
+  return !!(aiClient && modelNames[modelAlias]); // Modified
 }
 
 /**
@@ -50,10 +52,10 @@ function isInitialized(modelAlias = 'primary') { // Modified
  * @param {string} [modelAlias='primary'] - Optional: The model alias to use for estimation.
  * @returns {Promise<number>} - A promise that resolves to the estimated total input tokens.
  */
-async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, numberOfEntriesInChunk, previousChunkContext = null, modelAlias = 'primary') { // Modified
-  const selectedModel = modelInstances[modelAlias]; // Added
-  if (!selectedModel) { // Modified
-    throw new Error(`Gemini model for alias '${modelAlias}' not initialized. Call initializeGeminiModel first for token estimation.`); // Modified
+export async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, numberOfEntriesInChunk, previousChunkContext = null, modelAlias = 'primary') { // Modified
+  const selectedModelName = modelNames[modelAlias]; // Changed from selectedModel to selectedModelName
+  if (!aiClient || !selectedModelName) { // Modified check
+    throw new Error(`Gemini AI client or model for alias '${modelAlias}' not initialized. Call initializeGeminiModel first for token estimation.`); // Modified
   }
   if (!Array.isArray(chunkOfOriginalTexts)) {
     // Allow empty chunk for estimation, it might still have a system prompt
@@ -93,13 +95,13 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
 
   let userTokens = 0;
   if (finalUserPromptForEstimation.trim()) { // Only count if there's actual user text
-      const userTokenResult = await selectedModel.countTokens({ contents: [{ role: "user", parts: [{ text: finalUserPromptForEstimation }] }] }); // Modified
+      const userTokenResult = await aiClient.models.countTokens({ model: selectedModelName, contents: [{ role: "user", parts: [{ text: finalUserPromptForEstimation }] }] }); // Modified
       userTokens = userTokenResult.totalTokens || 0;
   }
 
   let systemTokens = 0;
   if (systemPromptString.trim()) { // Only count if there's actual system text
-      const systemTokenResult = await selectedModel.countTokens({ contents: [{ role: "system", parts: [{text: systemPromptString}]}]}); // Modified
+      const systemTokenResult = await aiClient.models.countTokens({ model: selectedModelName, contents: [{ role: "system", parts: [{text: systemPromptString}]}]}); // Modified
       systemTokens = systemTokenResult.totalTokens || 0;
   }
   
@@ -121,10 +123,10 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
  * @returns {Promise<{translatedResponseArray: Array<{index: number, text: string}>, actualInputTokens: number, outputTokens: number}>}
  * - A promise that resolves to an object containing the translated array, actual input tokens, and output tokens.
  */
-async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, temperature, topP, numberOfEntriesInChunk, abortSignal = null, previousChunkContext = null, thinkingBudget = 24576, modelAlias = 'primary') { // Modified
-  const selectedModel = modelInstances[modelAlias]; // Added
-  if (!selectedModel) { // Modified
-    throw new Error(`Gemini model for alias '${modelAlias}' not initialized. Call initializeGeminiModel first.`); // Modified
+export async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, temperature, topP, numberOfEntriesInChunk, abortSignal = null, previousChunkContext = null, thinkingBudget = 24576, modelAlias = 'primary') { // Modified
+  const selectedModelName = modelNames[modelAlias]; // Changed from selectedModel to selectedModelName
+  if (!aiClient || !selectedModelName) { // Modified check
+    throw new Error(`Gemini AI client or model for alias '${modelAlias}' not initialized. Call initializeGeminiModel first.`); // Modified
   }
   if (!Array.isArray(chunkOfOriginalTexts) || chunkOfOriginalTexts.length === 0) {
     console.warn('translateChunk called with empty or invalid chunk of texts.');
@@ -193,20 +195,23 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
     console.debug(`[Gemini Request] System Prompt:\n${fullSystemPrompt}`);
     console.debug(`[Gemini Request] User Input:\n${userPromptContent}`);
  
-    const result = await selectedModel.generateContent({ // Modified
+    const result = await aiClient.models.generateContent({ // Modified
+      model: selectedModelName, // Added model name
       contents: [{ role: "user", parts: [{ text: userPromptContent }] }],
-      generationConfig,
-      systemInstruction: { role: "system", parts: [{text: fullSystemPrompt}]},
-    }, requestOptions); // Pass requestOptions
+      generationConfig, // This remains the same
+      systemInstruction: { role: "system", parts: [{text: fullSystemPrompt}]}, // This remains the same
+      signal: abortSignal // Moved from requestOptions
+    });
     
-    if (!result.response || !result.response.candidates || result.response.candidates.length === 0) {
-      console.error('Invalid or empty response structure from Gemini API:', result.response);
+    // The new SDK response structure is flatter
+    if (!result || !result.candidates || result.candidates.length === 0) {
+      console.error('Invalid or empty response structure from Gemini API:', result);
       const noResponseError = new Error('No response or candidates from Gemini API.');
       noResponseError.isApiError = true;
       throw noResponseError;
     }
 
-    const candidate = result.response.candidates[0];
+    const candidate = result.candidates[0]; // Accessing candidates directly from result
 
     if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
       const jsonResponseString = candidate.content.parts.map(part => part.text).join('');
@@ -265,8 +270,8 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
           }
         }
 
-        const actualInputTokens = result.response.usageMetadata?.promptTokenCount || 0;
-        const outputTokens = result.response.usageMetadata?.candidatesTokenCount || 0;
+        const actualInputTokens = result.usageMetadata?.promptTokenCount || 0; // Accessing usageMetadata directly from result
+        const outputTokens = result.usageMetadata?.candidatesTokenCount || 0; // Accessing usageMetadata directly from result
 
         return { translatedResponseArray, actualInputTokens, outputTokens };
       } catch (parseError) {
@@ -301,10 +306,4 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
 
 // Removed resegmentSRTChunk function as per plan.
 
-module.exports = {
-  initializeGeminiModel,
-  isInitialized,
-  translateChunk,
-  estimateInputTokensForTranslation, // Export new function
-  // resegmentSRTChunk, // Removed export
-};
+// module.exports removed, using ES6 exports at function definitions.

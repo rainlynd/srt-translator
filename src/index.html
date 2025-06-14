@@ -136,32 +136,122 @@
                             </div>
                         </div>
                     </fieldset>
-                    
+
                     <fieldset>
-                        <legend>Transcription Settings</legend>
-                        <p class="settings-note">Core transcription settings (Source Language, Multilingual) are available in the "Global Controls" section. WhisperX handles model downloads and most advanced parameters automatically.</p>
-                        
+                        <legend>Legacy Transcription Settings (video_to_srt.py)</legend>
+                        <p class="settings-note">Global controls (Source Language, Diarization) apply. These settings are for the older Python script if still used. The new Advanced Pipeline has its own ASR settings below.</p>
                         <div class="form-group">
-                            <label for="transcription-compute-type">Compute Type (for WhisperX): <span class="tooltip" title="Data type for computation (e.g., float16, int8). Affects speed and VRAM usage. Default: float16">?</span></label>
-                            <select id="transcription-compute-type">
-                                <option value="float32">float32 (Higher Accuracy, Higher VRAM)</option>
-                                <option value="float16">float16 (Good Balance, Default)</option>
-                                <option value="int8">int8 (Fastest, Lower VRAM, Potentially Lower Accuracy)</option>
-                                <option value="int8_float16">int8_float16 (Quantized int8 with float16 compute)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="huggingface-token">Hugging Face Token (Optional): <span class="tooltip" title="Required for speaker diarization if 'Multilingual Transcription' is enabled. Get from hf.co/settings/tokens">?</span></label>
+                            <label for="huggingface-token">Hugging Face Token (Optional): <span class="tooltip" title="Used by legacy script for diarization if 'Enable Diarization' is checked. Get from hf.co/settings/tokens">?</span></label>
                             <input type="password" id="huggingface-token" placeholder="Enter your Hugging Face User Access Token">
-                            <p class="settings-note" style="font-size: 0.8em; margin-top: 5px;">Needed only if "Enable Diarization" is checked in Global Controls.</p>
+                            <p class="settings-note" style="font-size: 0.8em; margin-top: 5px;">Needed by legacy script if "Enable Diarization" is checked in Global Controls and source is not Chinese.</p>
                         </div>
-                        <div class="form-group checkbox-group"> <!-- Using checkbox-group for consistent styling -->
-                            <input type="checkbox" id="transcription-condition-on-previous-text">
-                            <label for="transcription-condition-on-previous-text">Condition on Previous Text <span class="tooltip" title="If enabled, the model will be conditioned on the previous segment's text. Can improve coherence but may also lead to repetition.">?</span></label>
+                        <!-- Old transcription-compute-type, condition-on-previous-text, and threads are removed from here as they are now part of the Advanced Python Pipeline settings -->
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Advanced Python Pipeline Settings</legend>
+                        <p class="settings-note">Configure the new Python-based translation pipeline.</p>
+
+                        <div class="settings-subsection">
+                            <h4>ASR (WhisperX) Settings</h4>
+                            <div class="form-group">
+                                <label for="python-asr-model-name">ASR Model Name: <span class="tooltip" title="WhisperX model name (e.g., large-v3, medium.en)">?</span></label>
+                                <input type="text" id="python-asr-model-name" placeholder="large-v3">
+                            </div>
+                            <div class="settings-grid-col-2">
+                                <div class="form-group">
+                                    <label for="python-asr-device">ASR Device: <span class="tooltip" title="Device for ASR model (cuda or cpu)">?</span></label>
+                                    <select id="python-asr-device">
+                                        <option value="cuda">CUDA (GPU)</option>
+                                        <option value="cpu">CPU</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="python-asr-compute-type">ASR Compute Type: <span class="tooltip" title="Data type for ASR computation (e.g., float16, int8)">?</span></label>
+                                    <select id="python-asr-compute-type">
+                                        <option value="float32">float32</option>
+                                        <option value="float16">float16</option>
+                                        <option value="int8">int8</option>
+                                        <option value="int8_float16">int8_float16</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="settings-grid-col-2">
+                                <div class="form-group">
+                                    <label for="python-asr-threads">ASR Threads: <span class="tooltip" title="Number of CPU threads for ASR.">?</span></label>
+                                    <input type="number" id="python-asr-threads" step="1" min="1" placeholder="4">
+                                </div>
+                                <div class="form-group">
+                                    <label for="python-diarization-device">Diarization Device: <span class="tooltip" title="Device for diarization model (cuda or cpu)">?</span></label>
+                                    <select id="python-diarization-device">
+                                        <option value="cuda">CUDA (GPU)</option>
+                                        <option value="cpu">CPU</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="python-asr-condition-previous">
+                                <label for="python-asr-condition-previous">Condition on Previous Text (ASR) <span class="tooltip" title="Condition ASR on previous segment's text.">?</span></label>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="transcription-threads">Transcription Threads: <span class="tooltip" title="Number of CPU threads for transcription. Default: 8. Higher may improve speed on multi-core CPUs.">?</span></label>
-                            <input type="number" id="transcription-threads" step="1" min="1">
+
+                        <div class="settings-subsection">
+                            <h4>Segmentation Settings</h4>
+                            <div class="form-group">
+                                <label for="python-spacy-model">spaCy Model Name: <span class="tooltip" title="spaCy model for NLP segmentation (e.g., en_core_web_trf)">?</span></label>
+                                <input type="text" id="python-spacy-model" placeholder="en_core_web_trf">
+                            </div>
+                            <div class="settings-grid-col-3">
+                                <div class="form-group">
+                                    <label for="python-segmentation-nlp-max-chars">NLP Max Chars: <span class="tooltip" title="Max characters for initial NLP sentence split.">?</span></label>
+                                    <input type="number" id="python-segmentation-nlp-max-chars" step="1" min="10" placeholder="150">
+                                </div>
+                                <div class="form-group">
+                                    <label for="python-segmentation-meaning-min-chars">Meaning Min Chars: <span class="tooltip" title="Min characters for meaning-based segment (Gemini).">?</span></label>
+                                    <input type="number" id="python-segmentation-meaning-min-chars" step="1" min="10" placeholder="80">
+                                </div>
+                                <div class="form-group">
+                                    <label for="python-segmentation-meaning-max-chars">Meaning Max Chars: <span class="tooltip" title="Max characters for meaning-based segment (Gemini).">?</span></label>
+                                    <input type="number" id="python-segmentation-meaning-max-chars" step="1" min="10" placeholder="250">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-subsection">
+                            <h4>Terminology Extraction Settings</h4>
+                            <div class="settings-grid-col-2">
+                                <div class="form-group">
+                                    <label for="python-terminology-min-length">Min Text Length: <span class="tooltip" title="Min length of text chunk for terminology extraction.">?</span></label>
+                                    <input type="number" id="python-terminology-min-length" step="1" min="10" placeholder="50">
+                                </div>
+                                <div class="form-group">
+                                    <label for="python-terminology-max-length">Max Text Length: <span class="tooltip" title="Max length of text chunk for terminology extraction.">?</span></label>
+                                    <input type="number" id="python-terminology-max-length" step="1" min="10" placeholder="500">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-subsection">
+                            <h4>Gemini Settings (for Python Pipeline)</h4>
+                            <p class="settings-note">These can override global Gemini settings if needed specifically for the Python pipeline.</p>
+                            <div class="settings-grid-col-2">
+                                <div class="form-group">
+                                    <label for="python-gemini-temperature">Temperature: <span class="tooltip" title="Python pipeline Gemini temperature.">?</span></label>
+                                    <input type="number" id="python-gemini-temperature" step="0.1" min="0" max="1" placeholder="0.3">
+                                </div>
+                                <div class="form-group">
+                                    <label for="python-gemini-top-p">Top P: <span class="tooltip" title="Python pipeline Gemini Top P.">?</span></label>
+                                    <input type="number" id="python-gemini-top-p" step="0.05" min="0" max="1" placeholder="0.95">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-subsection">
+                            <h4>Cache Settings</h4>
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="python-cache-keep-intermediate">
+                                <label for="python-cache-keep-intermediate">Keep Intermediate Files <span class="tooltip" title="Store intermediate outputs (ASR results, segmented text, etc.) in the job's cache directory.">?</span></label>
+                            </div>
                         </div>
                     </fieldset>
 

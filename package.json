@@ -36,7 +36,7 @@
     "style-loader": "^3.3.4"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
+    "@google/genai": "^0.14.0",
     "electron-squirrel-startup": "^1.0.1",
     "repomix": "^0.3.8"
   }

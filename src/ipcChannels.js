@@ -24,10 +24,18 @@ module.exports = {
   // --- Existing/Shared IPC Channels (Review and ensure compatibility) ---
   TRANSLATION_PROGRESS_UPDATE: 'translation-progress-update', // payload: { filePath: string, jobId: string, progress: number, status: string, stage?: 'transcribing'|'translating', chunkInfo?: string, type?: 'video'|'srt' }
   TRANSLATION_LOG_MESSAGE: 'translation-log-message', // payload: { timestamp: number, message: string, level: 'info'|'warn'|'error' }
-  TRANSLATION_FILE_COMPLETED: 'translation-file-completed', // payload: { filePath: string, jobId: string, status: 'Success'|'Error'|'Cancelled', outputPath?: string, error?: string, type?: 'video'|'srt' }
+  TRANSLATION_FILE_COMPLETED: 'translation-file-completed', // payload: { filePath: string, jobId: string, status: 'Success'|'Error'|'Cancelled', outputPath?: string, error?: string, type?: 'video'|'srt', pipelineType?: 'standard'|'advanced' }
   // RETRY_FILE_REQUEST may need to be adapted or have new versions per tab if retry logic differs. For now, keep as is.
   RETRY_FILE_REQUEST: 'retry-file-request', // payload: { filePath: string, targetLanguage: string, settings: object, type: 'video'|'srt', jobIdToRetry?: string }
-  
+
+  // --- Advanced Translation Pipeline Specific Channels (NEW) ---
+  // These could potentially be merged with existing channels by adding a 'pipelineType' field,
+  // but defining them separately for now as per plan.
+  // ADVANCED_TRANSLATION_START: 'advanced-translation-start', // Covered by progress update with initial status
+  ADVANCED_TRANSLATION_PROGRESS: 'advanced-translation-progress', // payload: { jobId: string, filePath: string, progress: number, status: string, stage: string, details?: object }
+  ADVANCED_TRANSLATION_COMPLETE: 'advanced-translation-complete', // payload: { jobId: string, filePath: string, status: 'Success'|'Error'|'Cancelled', outputPath?: string, error?: string }
+  // ADVANCED_TRANSLATION_ERROR is covered by ADVANCED_TRANSLATION_COMPLETE with status 'Error'
+
   // --- Settings Management (Remains Unchanged) ---
   LOAD_SETTINGS_REQUEST: 'load-settings-request',
   LOAD_SETTINGS_RESPONSE: 'load-settings-response', // payload: object settings or error
@@ -39,5 +47,5 @@ module.exports = {
   // Generic Directory Selection (can be used for output, model path, etc.)
   SELECT_DIRECTORY_REQUEST: 'select-directory-request', // payload: string (identifier for context, e.g., 'outputDirectory', 'localModelPath')
   SELECT_DIRECTORY_RESPONSE: 'select-directory-response', // payload: { path: string, identifier: string, error?: string }
-  
-  };
+
+};

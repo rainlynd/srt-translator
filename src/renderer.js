@@ -78,13 +78,28 @@ const rpmInput = document.getElementById('rpm');
 const loadDefaultsButton = document.getElementById('load-defaults-button');
 
 // Simplified Transcription Settings Elements
-const transcriptionComputeTypeSelect = document.getElementById('transcription-compute-type'); // Kept
-const huggingFaceTokenInput = document.getElementById('huggingface-token'); // Added
-const transcriptionConditionOnPreviousTextCheckbox = document.getElementById('transcription-condition-on-previous-text'); // Added
-const transcriptionThreadsInput = document.getElementById('transcription-threads'); // Added
+// const transcriptionComputeTypeSelect = document.getElementById('transcription-compute-type'); // Moved to Python Pipeline
+const huggingFaceTokenInput = document.getElementById('huggingface-token'); // Kept for legacy script
+// const transcriptionConditionOnPreviousTextCheckbox = document.getElementById('transcription-condition-on-previous-text'); // Moved
+// const transcriptionThreadsInput = document.getElementById('transcription-threads'); // Moved
 const saveSettingsButton = document.getElementById('save-settings-button'); // Added
 
-// Removed references to detailed transcription settings elements
+// Python Advanced Pipeline Settings Elements
+const pythonAsrModelNameInput = document.getElementById('python-asr-model-name');
+const pythonAsrDeviceSelect = document.getElementById('python-asr-device');
+const pythonAsrComputeTypeSelect = document.getElementById('python-asr-compute-type');
+const pythonAsrThreadsInput = document.getElementById('python-asr-threads');
+const pythonDiarizationDeviceSelect = document.getElementById('python-diarization-device');
+const pythonAsrConditionPreviousCheckbox = document.getElementById('python-asr-condition-previous');
+const pythonSpacyModelInput = document.getElementById('python-spacy-model');
+const pythonSegNlpMaxCharsInput = document.getElementById('python-segmentation-nlp-max-chars');
+const pythonSegMeaningMinCharsInput = document.getElementById('python-segmentation-meaning-min-chars');
+const pythonSegMeaningMaxCharsInput = document.getElementById('python-segmentation-meaning-max-chars');
+const pythonTermMinLengthInput = document.getElementById('python-terminology-min-length');
+const pythonTermMaxLengthInput = document.getElementById('python-terminology-max-length');
+const pythonGeminiTempInput = document.getElementById('python-gemini-temperature');
+const pythonGeminiTopPInput = document.getElementById('python-gemini-top-p');
+const pythonCacheKeepIntermediateCheckbox = document.getElementById('python-cache-keep-intermediate');
 
 const settingsErrorDisplayDiv = document.createElement('div'); // For displaying settings-related errors
 settingsErrorDisplayDiv.id = 'settings-error-display';
@@ -822,6 +837,81 @@ if (window.electronAPI && window.electronAPI.onTranslationFileCompleted) {
     });
 }
 
+// --- Advanced Pipeline IPC Handlers ---
+if (window.electronAPI && window.electronAPI.onAdvancedTranslationProgress) {
+    window.electronAPI.onAdvancedTranslationProgress((event, data) => {
+        // data: { jobId, filePath, progress, status, stage, details }
+        let fileToUpdate;
+        const isVideo = data.jobId.startsWith('video-'); // Assuming job ID convention
+        const isSrt = data.jobId.startsWith('srt-');
+
+        if (isVideo) {
+            fileToUpdate = selectedVideoFiles.find(f => f.jobId === data.jobId || f.path === data.filePath);
+            if (fileToUpdate) {
+                if (!fileToUpdate.jobId) fileToUpdate.jobId = data.jobId;
+                fileToUpdate.progress = data.progress / 100; // Assuming 0-100
+                fileToUpdate.status = data.status;
+                fileToUpdate.stage = data.stage || 'advanced_processing';
+                updateVideoFileListItem(fileToUpdate);
+            }
+        } else if (isSrt) {
+            fileToUpdate = selectedSrtFiles.find(f => f.jobId === data.jobId || f.path === data.filePath);
+            if (fileToUpdate) {
+                if (!fileToUpdate.jobId) fileToUpdate.jobId = data.jobId;
+                fileToUpdate.progress = data.progress / 100; // Assuming 0-100
+                fileToUpdate.status = data.status;
+                updateSrtFileListItem(fileToUpdate);
+            }
+        }
+        if (!fileToUpdate) {
+            appendToLog(`Advanced progress update for unknown job/file: ${data.filePath}, JobID: ${data.jobId}`, 'warn', true);
+        }
+    });
+}
+
+if (window.electronAPI && window.electronAPI.onAdvancedTranslationComplete) {
+    window.electronAPI.onAdvancedTranslationComplete((event, data) => {
+        // data: { jobId, filePath, status, outputPath?, error? }
+        let fileToUpdate;
+        const isVideo = data.jobId.startsWith('video-');
+        const isSrt = data.jobId.startsWith('srt-');
+        let logMessagePrefix = `Advanced Pipeline for ${data.filePath} (Job: ${data.jobId})`;
+
+        if (isVideo) {
+            fileToUpdate = selectedVideoFiles.find(f => f.jobId === data.jobId || f.path === data.filePath);
+            if (fileToUpdate) {
+                if (!fileToUpdate.jobId) fileToUpdate.jobId = data.jobId;
+                fileToUpdate.status = data.status;
+                fileToUpdate.progress = 1;
+                fileToUpdate.stage = undefined; // Clear stage
+                updateVideoFileListItem(fileToUpdate);
+                checkAllVideoFilesProcessed();
+            }
+        } else if (isSrt) {
+            fileToUpdate = selectedSrtFiles.find(f => f.jobId === data.jobId || f.path === data.filePath);
+            if (fileToUpdate) {
+                if (!fileToUpdate.jobId) fileToUpdate.jobId = data.jobId;
+                fileToUpdate.status = data.status;
+                fileToUpdate.progress = 1;
+                updateSrtFileListItem(fileToUpdate);
+                activeSrtJobDetails.jobIds.delete(data.jobId);
+                checkAllSrtFilesProcessed();
+            }
+        }
+
+        if (fileToUpdate) {
+            if (data.status === 'Success') {
+                appendToLog(`${logMessagePrefix} completed successfully. Output: ${data.outputPath}`, 'info', true);
+            } else if (data.status === 'Error' || data.status.startsWith('Failed')) {
+                appendToLog(`Error in ${logMessagePrefix}: ${data.error}`, 'error', true);
+            } else if (data.status === 'Cancelled') {
+                appendToLog(`${logMessagePrefix} was cancelled.`, 'warn', true);
+            }
+        } else {
+            appendToLog(`Advanced completion for unknown job/file: ${data.filePath}, JobID: ${data.jobId}`, 'warn', true);
+        }
+    });
+}
 
 // Handle log messages from main (This can remain as is)
 if (window.electronAPI && window.electronAPI.onTranslationLogMessage) {
@@ -1321,23 +1411,43 @@ saveSettingsButton.addEventListener('click', () => {
         // outputDirectory: outputDirectoryInput.value.trim(), // REMOVED
         // localModelPath: localModelPathInput.value.trim(), // Removed
 
-        // Simplified Transcription Settings
-        transcriptionComputeType: transcriptionComputeTypeSelect.value,
-        huggingFaceToken: huggingFaceTokenInput.value.trim(), // Added
-        transcriptionConditionOnPreviousText: transcriptionConditionOnPreviousTextCheckbox.checked, // Added
-        transcriptionThreads: validateNumericInput(transcriptionThreadsInput, "Transcription Threads", false, 1), // Added
+        // Legacy Transcription Settings
+        huggingFaceToken: huggingFaceTokenInput.value.trim(),
+        // transcriptionComputeType, transcriptionConditionOnPreviousText, transcriptionThreads are now part of pythonPipeline
 
-        // Removed:
-        // videoResegmentationTemp, videoResegmentationTopP
-        // transcriptionTemperature, transcriptionNoSpeechThreshold, transcriptionConditionOnPreviousText,
-        // transcriptionVadFilter, and all specific transcriptionVad... parameters
-        // transcriptionCpuThreads, transcriptionNumWorkers
+        // Advanced Python Pipeline Settings
+        pythonPipeline: {
+            asrSettings: {
+                modelName: pythonAsrModelNameInput.value.trim(),
+                device: pythonAsrDeviceSelect.value,
+                computeType: pythonAsrComputeTypeSelect.value,
+                threads: validateNumericInput(pythonAsrThreadsInput, "Python ASR Threads", false, 1),
+                diarizationDevice: pythonDiarizationDeviceSelect.value,
+                conditionOnPreviousText: pythonAsrConditionPreviousCheckbox.checked,
+            },
+            spacyModelName: pythonSpacyModelInput.value.trim(),
+            segmentation: {
+                nlpMaxChars: validateNumericInput(pythonSegNlpMaxCharsInput, "Python NLP Max Chars", false, 10),
+                meaningSplitMinChars: validateNumericInput(pythonSegMeaningMinCharsInput, "Python Meaning Min Chars", false, 10),
+                meaningSplitMaxChars: validateNumericInput(pythonSegMeaningMaxCharsInput, "Python Meaning Max Chars", false, 10),
+            },
+            terminology: {
+                minLength: validateNumericInput(pythonTermMinLengthInput, "Python Terminology Min Length", false, 10),
+                maxLength: validateNumericInput(pythonTermMaxLengthInput, "Python Terminology Max Length", false, 10),
+            },
+            geminiSettings: {
+                temperature: validateNumericInput(pythonGeminiTempInput, "Python Gemini Temperature", true, 0, 1),
+                topP: validateNumericInput(pythonGeminiTopPInput, "Python Gemini Top P", true, 0, 1),
+            },
+            cacheSettings: {
+                keepIntermediateFiles: pythonCacheKeepIntermediateCheckbox.checked,
+            }
+        }
     };
 
     if (!isValid) {
-        // displaySettingsError is already called by validateNumericInput
         appendToLog('Settings validation failed. Please correct the highlighted fields.', 'error', true);
-        return; // Don't save if validation failed
+        return;
     }
     if (window.electronAPI && window.electronAPI.sendSaveSettingsRequest) {
         window.electronAPI.sendSaveSettingsRequest(settingsToSave);
@@ -1411,11 +1521,38 @@ function loadSettingsIntoForm(settings) {
     // outputDirectoryInput.value = settings.outputDirectory || ''; // REMOVED
     // localModelPathInput.value = settings.localModelPath || ''; // Removed
 
-    // Load Simplified Transcription Settings
-    transcriptionComputeTypeSelect.value = settings.transcriptionComputeType || 'float16'; // Default to float16 as per plan
-    huggingFaceTokenInput.value = settings.huggingFaceToken || ''; // Added
-    transcriptionConditionOnPreviousTextCheckbox.checked = !!settings.transcriptionConditionOnPreviousText; // Added
-    transcriptionThreadsInput.value = settings.transcriptionThreads || 8; // Added
+    // Load Legacy Transcription Settings
+    huggingFaceTokenInput.value = settings.huggingFaceToken || '';
+    // Old transcriptionComputeType, conditionOnPreviousText, threads are handled by migration in settingsManager.js
+    // or directly loaded into pythonPipeline below.
+
+    // Load Advanced Python Pipeline Settings
+    const ppSettings = settings.pythonPipeline || {}; // Ensure pythonPipeline object exists
+    const asrSettings = ppSettings.asrSettings || {};
+    const segSettings = ppSettings.segmentation || {};
+    const termSettings = ppSettings.terminology || {};
+    const geminiPPSettings = ppSettings.geminiSettings || {};
+    const cachePPSettings = ppSettings.cacheSettings || {};
+
+    pythonAsrModelNameInput.value = asrSettings.modelName || 'large-v3';
+    pythonAsrDeviceSelect.value = asrSettings.device || 'cuda';
+    pythonAsrComputeTypeSelect.value = asrSettings.computeType || 'float16';
+    pythonAsrThreadsInput.value = asrSettings.threads || 4;
+    pythonDiarizationDeviceSelect.value = asrSettings.diarizationDevice || 'cuda';
+    pythonAsrConditionPreviousCheckbox.checked = !!asrSettings.conditionOnPreviousText;
+
+    pythonSpacyModelInput.value = ppSettings.spacyModelName || 'en_core_web_trf';
+    pythonSegNlpMaxCharsInput.value = segSettings.nlpMaxChars || 150;
+    pythonSegMeaningMinCharsInput.value = segSettings.meaningSplitMinChars || 80;
+    pythonSegMeaningMaxCharsInput.value = segSettings.meaningSplitMaxChars || 250;
+
+    pythonTermMinLengthInput.value = termSettings.minLength || 50;
+    pythonTermMaxLengthInput.value = termSettings.maxLength || 500;
+
+    pythonGeminiTempInput.value = geminiPPSettings.temperature !== undefined ? geminiPPSettings.temperature : (settings.temperature !== undefined ? settings.temperature : 0.3);
+    pythonGeminiTopPInput.value = geminiPPSettings.topP !== undefined ? geminiPPSettings.topP : (settings.topP !== undefined ? settings.topP : 0.95);
+    
+    pythonCacheKeepIntermediateCheckbox.checked = !!cachePPSettings.keepIntermediateFiles;
 
     // Update UI based on loaded settings
     updateGlobalSourceLanguageDisabledState(); // Kept
@@ -1528,6 +1665,15 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         console.error('electronAPI.sendLoadSettingsRequest is not available for initial load.');
         appendToLog('Error: Could not request initial settings load.', 'error', true);
+    }
+
+    // Ensure preload API methods are exposed
+    if (!window.electronAPI) {
+        console.error("FATAL: window.electronAPI not found. Preload script may have failed.");
+        alert("Application critical error: Preload script failed to load. Please restart the application or check logs.");
+        // Disable UI elements or show an overlay
+        document.body.innerHTML = "<h1 style='color:red; text-align:center; margin-top: 50px;'>Application Critical Error: Preload Failed</h1>";
+        return;
     }
 
     // Populate global language dropdowns
