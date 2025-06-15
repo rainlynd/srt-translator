@@ -1897,8 +1897,8 @@ ipcMain.on(ipcChannels.CANCEL_VIDEO_QUEUE_PROCESSING_REQUEST, (event) => {
 });
 
 // DEPRECATED Handlers (Review if any logic needs to be preserved or adapted)
-ipcMain.on(ipcChannels.RETRY_FILE_REQUEST, async (event, { filePath, targetLanguageCode, targetLanguageFullName, settings, type, jobIdToRetry }) => { // Added targetLanguageCode, targetLanguageFullName
-    console.log(`Retry request received for: ${filePath}, Type: ${type}, JobID to retry: ${jobIdToRetry}, Target Lang Code: ${targetLanguageCode}, Target Lang FullName: ${targetLanguageFullName}`);
+ipcMain.on(ipcChannels.RETRY_FILE_REQUEST, async (event, { filePath, targetLanguageCode, targetLanguageFullName, sourceLanguageOfSrt, settings, type, jobIdToRetry }) => { // Added sourceLanguageOfSrt
+    console.log(`Retry request received for: ${filePath}, Type: ${type}, JobID to retry: ${jobIdToRetry}, Target Lang Code: ${targetLanguageCode}, Target Lang FullName: ${targetLanguageFullName}, Source Lang: ${sourceLanguageOfSrt}`);
     
     const currentFullSettings = await settingsManager.loadSettings(); // Always get fresh settings for retry
 
@@ -1918,8 +1918,10 @@ ipcMain.on(ipcChannels.RETRY_FILE_REQUEST, async (event, { filePath, targetLangu
                 return;
             }
             const retryGlobalSettingsSRT = {
-                targetLanguageCode: targetLanguage || currentFullSettings.targetLanguageCode, // Assuming targetLanguage passed is a code
-                targetLanguageFullName: targetLanguage ? (targetLanguagesWithNone.find(lang => lang.code === targetLanguage)?.name || targetLanguage) : currentFullSettings.targetLanguageFullName
+                targetLanguageCode: targetLanguageCode || currentFullSettings.targetLanguageCode, // Use the destructured targetLanguageCode from IPC arguments
+                targetLanguageFullName: targetLanguageFullName || // Use destructured targetLanguageFullName if available
+                                      (targetLanguageCode ? targetLanguagesWithNone_main.find(lang => lang.code === targetLanguageCode)?.name : null) || // Else, derive from targetLanguageCode
+                                      currentFullSettings.targetLanguageFullName // Fallback to current settings
             };
 
             if (retryGlobalSettingsSRT.targetLanguageCode === 'none') {
@@ -1950,6 +1952,7 @@ ipcMain.on(ipcChannels.RETRY_FILE_REQUEST, async (event, { filePath, targetLangu
                     globalSettings: { // Ensure thinkingBudget is part of the globalSettings for GFC
                         targetLanguageCode: retryGlobalSettingsSRT.targetLanguageCode,
                         targetLanguageFullName: retryGlobalSettingsSRT.targetLanguageFullName,
+                        sourceLanguageOfSrt: sourceLanguageOfSrt, // Added source language for retry
                         thinkingBudget: currentFullSettings.thinkingBudget,
                     },
                     allSettings: currentFullSettings
