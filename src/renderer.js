@@ -271,7 +271,7 @@ function executeSrtProcessing() {
     const globalSettings = {
         targetLanguageCode: globalTargetLanguageInput.value,
         targetLanguageFullName: targetLanguagesWithNone.find(lang => lang.code === globalTargetLanguageInput.value)?.name || globalTargetLanguageInput.value,
-        thinkingBudget: globalThinkingEnableCheckbox ? (globalThinkingEnableCheckbox.checked ? 24576 : 0) : 24576, // Added
+        thinkingBudget: globalThinkingEnableCheckbox.checked ? 24576 : 0, // Added
     };
     
     if (window.electronAPI && window.electronAPI.sendStartSrtBatchProcessingRequest) {
@@ -401,9 +401,9 @@ if (startVideoProcessingButton) {
             targetLanguageFullName: targetLanguagesWithNone.find(lang => lang.code === globalTargetLanguageInput.value)?.name || globalTargetLanguageInput.value,
             transcriptionSourceLanguage: globalSourceLanguageSelect.value === "" ? null : globalSourceLanguageSelect.value,
             enableDiarization: globalDiarizationCheckbox.checked,
-            thinkingBudget: globalThinkingEnableCheckbox ? (globalThinkingEnableCheckbox.checked ? 24576 : 0) : 24576, // Added
+            thinkingBudget: globalThinkingEnableCheckbox.checked ? 24576 : 0, // Added
         };
-
+ 
         if (window.electronAPI && window.electronAPI.sendStartVideoQueueProcessingRequest) {
             window.electronAPI.sendStartVideoQueueProcessingRequest({
                 videoQueue: videoQueue.map(f => f.path), // Send array of paths
@@ -1302,9 +1302,9 @@ saveSettingsButton.addEventListener('click', () => {
         targetLanguage: globalTargetLanguageInput.value,
         transcriptionSourceLanguage: globalSourceLanguageSelect.value === "" ? null : globalSourceLanguageSelect.value,
         enableDiarization: globalDiarizationCheckbox.checked,
-        thinkingBudget: globalThinkingEnableCheckbox ? (globalThinkingEnableCheckbox.checked ? 24576 : 0) : 24576, // Added
+        thinkingBudget: globalThinkingEnableCheckbox.checked ? 24576 : 0, // Added
         // enableVideoResegmentation: globalEnableResegmentationCheckbox.checked, // Removed
-
+ 
         // API & Translation Parameters
         apiKey: apiKeyInput.value,
         geminiModel: geminiModelValue,

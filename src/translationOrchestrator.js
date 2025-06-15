@@ -54,7 +54,7 @@ function reconstructSrtBlock(index, timestamp, text) {
  * @throws {Error} If the chunk fails all retries or validation, or if cancelled.
  */
 async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLanguage, settings, logCallback, jobId = null, gfc = null, previousChunkOriginalEntries = null) { // Changed previousChunkContextString to previousChunkOriginalEntries
-  const { systemPrompt, temperature, topP, filePathForLogging, originalInputPath, chunkRetries, thinkingBudget, strongerRetryModelName, geminiModel } = settings; // Added strongerRetryModelName, geminiModel
+  const { systemPrompt, temperature, topP, filePathForLogging, originalInputPath, chunkRetries, thinkingBudget: uiControlledThinkingBudget, strongerRetryModelName, geminiModel } = settings; // Added strongerRetryModelName, geminiModel
     const standardMaxChunkRetries = (typeof chunkRetries === 'number' && chunkRetries > 0) ? chunkRetries : 2; // Use from settings or default to 2
     let chunkAttempt = 0;
     let currentMaxRetries = standardMaxChunkRetries;
@@ -109,17 +109,23 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
             }
 
             // contextToPassToGemini is now prepared before the loop
-
+ 
             let modelAliasToUse = 'primary';
-
+            let effectiveThinkingBudget = uiControlledThinkingBudget; // Default to UI-controlled value
+ 
             if (chunkAttempt > 3 && strongerRetryModelName && strongerRetryModelName.trim() !== '') {
                 modelAliasToUse = 'retry';
+                effectiveThinkingBudget = 32768; // Override for stronger model retry
                 // modelNameToLog = strongerRetryModelName; // For logging if needed
-                logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Attempt ${chunkAttempt}: Switching to Gemini PRO model ('${strongerRetryModelName}') for retry.`, 'debug');
+                logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Attempt ${chunkAttempt}: Switching to Gemini PRO model ('${strongerRetryModelName}') for retry. Setting thinkingBudget to 32768.`, 'debug');
             } else if (chunkAttempt > 3) { // Stronger model desired but not configured
-                logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Attempt ${chunkAttempt}: Would switch to stronger model, but no strongerRetryModelName configured. Using primary model ('${geminiModel}').`, 'warn');
+                // Stronger model desired but not configured, primary model continues with its thinkingBudget
+                logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Attempt ${chunkAttempt}: Would switch to stronger model, but no strongerRetryModelName configured. Using primary model ('${geminiModel}'). Thinking budget from UI: ${effectiveThinkingBudget}.`, 'warn');
+            } else {
+                // Primary model attempt, use UI controlled thinking budget
+                logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Attempt ${chunkAttempt}: Using primary model ('${geminiModel}'). Thinking budget from UI: ${effectiveThinkingBudget}.`, 'debug');
             }
-
+ 
             // Re-estimate tokens if switching model, only if GFC is active and it's not the first attempt (where it was already estimated)
             // This is a simplified approach; a more complex GFC might need re-requesting resources.
             // For now, we assume the initial estimation for 'primary' is sufficient for GFC's initial gatekeeping.
@@ -135,7 +141,7 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
                 originalChunk.length,
                 settings.abortSignal, // Assuming settings might carry an AbortSignal for the job
                 contextToPassToGemini, // Pass the determined context (always, if available)
-                thinkingBudget, // Pass it here
+                effectiveThinkingBudget, // Pass the conditionally set thinkingBudget
                 modelAliasToUse // Pass the determined model alias
             );
             
