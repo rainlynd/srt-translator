@@ -1208,26 +1208,58 @@ function checkAllVideoFilesProcessed() {
 
 // --- Log Area ---
 const MAX_LOG_LINES = 500; // Maximum number of lines to keep in the log
+let logLinesBuffer = []; // Buffer for incoming log lines
+let logUpdateTimeoutId = null; // To throttle DOM updates
+const LOG_UPDATE_INTERVAL_MS = 200; // Update DOM every 200ms
+let isUserScrolledUp = false; // Track if user has scrolled away from the bottom
+
+function updateLogAreaFromBuffer() {
+    if (logLinesBuffer.length === 0) {
+        return;
+    }
+
+    // Check scroll position before update
+    const scrollThreshold = 5; // Pixels
+    isUserScrolledUp = (logArea.scrollHeight - logArea.scrollTop - logArea.clientHeight) > scrollThreshold;
+
+    // Efficiently join and set the value
+    logArea.value = logLinesBuffer.join(''); // Assuming logEntry in appendToLog already has '\n'
+
+    // Trim array if over limit
+    if (logLinesBuffer.length > MAX_LOG_LINES) {
+        logLinesBuffer.splice(0, logLinesBuffer.length - MAX_LOG_LINES);
+        // Re-set value if trimmed (though ideally buffer management prevents excessive length before join)
+        logArea.value = logLinesBuffer.join('');
+    }
+    
+    // Conditional auto-scroll
+    if (!isUserScrolledUp) {
+        logArea.scrollTop = logArea.scrollHeight;
+    }
+    // No need to clear logLinesBuffer here, appendToLog manages its growth and updateLogAreaFromBuffer trims it.
+    // If we were batching additions to logLinesBuffer, then clearing the batch after processing would be here.
+}
 
 function appendToLog(message, level = 'info', withTimestamp = true, timestamp) {
     const time = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
     const prefix = withTimestamp ? `[${time}] ` : '';
     const logEntry = `${prefix}[${level.toUpperCase()}] ${message}\n`;
-    
-    // Append new entry
-    logArea.value += logEntry;
 
-    // Trim log if it exceeds MAX_LOG_LINES
-    const lines = logArea.value.split('\n');
-    if (lines.length > MAX_LOG_LINES) {
-        // Remove lines from the beginning until it's within the limit
-        // Keep MAX_LOG_LINES, so slice from lines.length - MAX_LOG_LINES
-        // Add 1 to account for the trailing newline that split might create as an empty last element
-        const linesToKeep = lines.slice(Math.max(0, lines.length - MAX_LOG_LINES -1));
-        logArea.value = linesToKeep.join('\n');
+    logLinesBuffer.push(logEntry);
+
+    // Trim buffer proactively to avoid excessive memory use before DOM update
+    if (logLinesBuffer.length > MAX_LOG_LINES + 50) { // Keep a small margin over MAX_LOG_LINES
+        logLinesBuffer.splice(0, logLinesBuffer.length - MAX_LOG_LINES);
     }
 
-    logArea.scrollTop = logArea.scrollHeight; // Auto-scroll
+    // Schedule or reschedule the DOM update
+    if (logUpdateTimeoutId) {
+        clearTimeout(logUpdateTimeoutId);
+    }
+    logUpdateTimeoutId = setTimeout(() => {
+        updateLogAreaFromBuffer();
+        logUpdateTimeoutId = null;
+    }, LOG_UPDATE_INTERVAL_MS);
 }
 
 // --- Settings Tab Logic ---
