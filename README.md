@@ -12,7 +12,6 @@ SRT Translator is an Electron-based desktop application designed for transcribin
     - [User Interface](#user-interface)
     - [Configuration](#configuration)
     - [Processing \& Control](#processing--control)
-  - [Tech Stack](#tech-stack)
   - [Prerequisites](#prerequisites)
   - [Setup and Installation](#setup-and-installation)
     - [For End-Users (Packaged Application)](#for-end-users-packaged-application)
@@ -60,19 +59,6 @@ SRT Translator is an Electron-based desktop application designed for transcribin
 *   "Retry" functionality for files that failed or were cancelled.
 *   "Hold-to-activate" mechanism for starting SRT translation batches to prevent accidental clicks.
 
-## Tech Stack
-
-*   **Core Framework:** Electron
-*   **Main Process Logic:** Node.js
-*   **User Interface:** HTML, CSS, JavaScript
-*   **AI Translation:** Google Gemini API
-*   **Transcription Engines:** Python, WhisperX, FunASR
-*   **Audio/Video Processing:** FFmpeg
-*   **Key Libraries/Modules:**
-    *   Node.js: `@google/generative-ai`, `electron-squirrel-startup`
-    *   Python: `whisperx` (and its dependencies like `torch`, `torchaudio`), `funasr`, `pyannote.audio`, `nltk`, `numpy`, `pandas`
-*   **Build & Packaging:** Electron Forge, Webpack, PyInstaller (for the Python transcription script)
-
 ## Prerequisites
 
 *   **Node.js:** Required for running and developing the application.
@@ -83,7 +69,7 @@ SRT Translator is an Electron-based desktop application designed for transcribin
 ## Setup and Installation
 
 ### For End-Users (Packaged Application)
-1.  Download the latest release for your operating system from the [Releases Page](https://github.com/rainlynd/srt-translator/releases) (Replace with actual link).
+1.  Download the latest release for your operating system from the [Releases Page](https://github.com/rainlynd/srt-translator/releases)
 2.  Install the application following standard procedures for your OS.
 3.  Launch SRT Translator.
 4.  Navigate to the **Settings** tab.
