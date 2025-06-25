@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <title>SRT Translator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="controls-area">
+            <h2>Global Controls</h2>
+            <div class="global-controls-grid">
+                <div class="control-group">
+                    <label for="global-target-language">Target Language:</label>
+                    <select id="global-target-language">
+                        <!-- Options will be populated by renderer.js -->
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="global-source-language">Source Language (Video):</label>
+                    <select id="global-source-language">
+                        <!-- Options will be populated by renderer.js -->
+                    </select>
+                </div>
+                <div class="control-group checkbox-group">
+                    <input type="checkbox" id="global-diarization-enable">
+                    <label for="global-diarization-enable">Enable Diarization (Video, 1-2 Speakers)</label>
+                </div>
+                <div class="control-group checkbox-group">
+                    <input type="checkbox" id="global-thinking-enable">
+                    <label for="global-thinking-enable">Enable Gemini Thinking</label>
+                </div>
+                <div class="control-group checkbox-group">
+                    <input type="checkbox" id="global-recursive-selection">
+                    <label for="global-recursive-selection">Select Files Recursively (from Directory)</label>
+                </div>
+            </div>
+        </header>
+
+        <main class="tabs-area">
+            <div class="tab-buttons">
+                <button class="tab-button active" data-tab="translate-videos-tab">Translate Videos</button>
+                <button class="tab-button" data-tab="translate-srt-tab">Translate SRT</button>
+                <button class="tab-button" data-tab="log-tab">Log</button>
+                <button class="tab-button" data-tab="settings-tab">Settings</button>
+            </div>
+
+            <div id="translate-videos-tab" class="tab-content active">
+                <h3>Process Video Files</h3>
+                <div class="action-button-group">
+                    <button id="select-video-files-button">Select Video File(s)</button>
+                    <button id="start-video-processing-button" disabled>Start Queue</button>
+                    <button id="cancel-video-processing-button" class="secondary" disabled>Cancel All</button>
+                </div>
+                <div id="video-file-list-area">
+                    <p>No video files selected.</p>
+                </div>
+            </div>
+
+            <div id="translate-srt-tab" class="tab-content">
+                <h3>Process SRT Files</h3>
+                 <div class="action-button-group">
+                    <button id="select-srt-files-button">Select SRT File(s)</button>
+                    <button id="start-srt-processing-button" disabled>Start Translations</button>
+                    <button id="cancel-srt-processing-button" class="secondary" disabled>Cancel All</button>
+                </div>
+                <div id="srt-file-list-area">
+                    <p>No SRT files selected.</p>
+                </div>
+            </div>
+
+            <div id="log-tab" class="tab-content">
+                <h3>Application Log</h3>
+                <textarea id="log-area" readonly></textarea>
+            </div>
+
+            <div id="settings-tab" class="tab-content">
+                <h3>Application Settings</h3>
+                <div class="settings-form">
+                    <fieldset>
+                        <legend>API Configuration</legend>
+                        <div class="form-group">
+                            <label for="api-key">Gemini API Key:</label>
+                            <input type="password" id="api-key" placeholder="Enter your API key">
+                        </div>
+                        <div class="form-group">
+                            <label for="gemini-model">Gemini Model:</label>
+                            <select id="gemini-model-select">
+                                <option value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</option>
+                                <option value="custom">Custom Model</option>
+                            </select>
+                            <input type="text" id="gemini-model-custom" style="display: none;" placeholder="Enter custom model name">
+                        </div>
+                        <!-- New section for stronger retry model -->
+                        <div class="form-group">
+                            <label for="stronger-gemini-model-select">Stronger Retry Model (after 3 failed chunk retries):</label>
+                            <select id="stronger-gemini-model-select">
+                                <option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro-preview-05-06</option>
+                                <option value="custom">Custom Stronger Model</option>
+                            </select>
+                            <input type="text" id="stronger-gemini-model-custom" style="display: none;" placeholder="Enter custom stronger model name">
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Translation Parameters</legend>
+                        <div class="form-group">
+                            <label for="system-prompt">System Prompt (Instructions for AI):</label>
+                            <textarea id="system-prompt" rows="8"></textarea>
+                        </div>
+                         <div class="settings-grid-col-2">
+                            <div class="form-group">
+                                <label for="temperature">Temperature:</label>
+                                <input type="number" id="temperature" step="0.1" min="0" max="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="top-p">Top P:</label>
+                                <input type="number" id="top-p" step="0.1" min="0" max="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="entries-per-chunk">Entries per API Chunk:</label>
+                                <input type="number" id="entries-per-chunk" step="1" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="rpm">Requests Per Minute (RPM Limit):</label>
+                                <input type="number" id="rpm" step="1" min="1">
+                            </div>
+                        </div>
+                        <div class="settings-grid-col-2">
+                            <!-- File Retries UI Element Removed -->
+                            <div class="form-group">
+                                <label for="chunk-retries">Chunk Retries (on failure):</label>
+                                <input type="number" id="chunk-retries" step="1" min="0">
+                            </div>
+                        </div>
+                    </fieldset>
+                    
+                    <fieldset>
+                        <legend>Transcription Settings</legend>
+                        <p class="settings-note">Core transcription settings (Source Language, Multilingual) are available in the "Global Controls" section. WhisperX handles model downloads and most advanced parameters automatically.</p>
+                        
+                        <div class="form-group">
+                            <label for="transcription-compute-type">Compute Type (for WhisperX): <span class="tooltip" title="Data type for computation (e.g., float16, int8). Affects speed and VRAM usage. Default: float16">?</span></label>
+                            <select id="transcription-compute-type">
+                                <option value="float32">float32 (Higher Accuracy, Higher VRAM)</option>
+                                <option value="float16">float16 (Good Balance, Default)</option>
+                                <option value="int8">int8 (Fastest, Lower VRAM, Potentially Lower Accuracy)</option>
+                                <option value="int8_float16">int8_float16 (Quantized int8 with float16 compute)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="huggingface-token">Hugging Face Token (Optional): <span class="tooltip" title="Required for speaker diarization if 'Multilingual Transcription' is enabled. Get from hf.co/settings/tokens">?</span></label>
+                            <input type="password" id="huggingface-token" placeholder="Enter your Hugging Face User Access Token">
+                            <p class="settings-note" style="font-size: 0.8em; margin-top: 5px;">Needed only if "Enable Diarization" is checked in Global Controls.</p>
+                        </div>
+                        <div class="form-group checkbox-group"> <!-- Using checkbox-group for consistent styling -->
+                            <input type="checkbox" id="transcription-condition-on-previous-text">
+                            <label for="transcription-condition-on-previous-text">Condition on Previous Text <span class="tooltip" title="If enabled, the model will be conditioned on the previous segment's text. Can improve coherence but may also lead to repetition.">?</span></label>
+                        </div>
+                        <div class="form-group">
+                            <label for="transcription-threads">Transcription Threads: <span class="tooltip" title="Number of CPU threads for transcription. Default: 8. Higher may improve speed on multi-core CPUs.">?</span></label>
+                            <input type="number" id="transcription-threads" step="1" min="1">
+                        </div>
+                    </fieldset>
+
+                    <div class="form-group button-group settings-actions">
+                        <button id="save-settings-button">Save Settings</button>
+                        <button id="load-defaults-button" class="secondary">Load Defaults</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <!-- renderer.js will be loaded by Electron's Webpack setup -->
+</body>
+</html>

@@ -1,0 +1,43 @@
+{
+  "name": "srt-translator",
+  "productName": "srt-translator",
+  "version": "1.0.0",
+  "description": "My Electron application description",
+  "main": ".webpack/main",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "echo \"No linting configured\"",
+    "setup:python_env": "bash -c \"set -e; if [ ! -f .venv/Scripts/activate ]; then echo 'Virtual environment not found, creating...'; python -m venv .venv; fi; source .venv/Scripts/activate; python -m pip install --upgrade pip; python -m pip install -r requirements_dev.txt; deactivate\"",
+    "dev": "npm run setup:python_env && npm run start"
+  },
+  "keywords": [],
+  "author": {
+    "name": "Test User",
+    "email": "test@example.com"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@electron-forge/cli": "^7.8.1",
+    "@electron-forge/maker-deb": "^7.8.1",
+    "@electron-forge/maker-rpm": "^7.8.1",
+    "@electron-forge/maker-squirrel": "^7.8.1",
+    "@electron-forge/maker-zip": "^7.8.1",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.8.1",
+    "@electron-forge/plugin-fuses": "^7.8.1",
+    "@electron-forge/plugin-webpack": "^7.8.1",
+    "@electron/fuses": "^1.8.0",
+    "@vercel/webpack-asset-relocator-loader": "^1.7.3",
+    "css-loader": "^6.11.0",
+    "electron": "36.2.1",
+    "node-loader": "^2.1.0",
+    "style-loader": "^3.3.4"
+  },
+  "dependencies": {
+    "@google/genai": "^0.12.0",
+    "electron-squirrel-startup": "^1.0.1",
+    "repomix": "^0.3.8"
+  }
+}

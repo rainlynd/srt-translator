@@ -1,0 +1,623 @@
+:root {
+    --primary-color: #2E86AB; /* Deep Cerulean Blue */
+    --primary-hover-color: #205E79; /* Darker Cerulean */
+    --secondary-color: #F26C4F; /* Coral Orange */
+    --secondary-hover-color: #D45A40; /* Darker Coral */
+    --background-color: #1A202C; /* Very Dark Slate Blue/Gray */
+    --surface-color: #2D3748; /* Dark Slate Gray */
+    --text-color: #E2E8F0; /* Light Grayish Blue */
+    --text-light-color: #A0AEC0; /* Medium Grayish Blue */
+    --border-color: #4A5568; /* Gray */
+    --disabled-color: #4A5568; /* Same as border for a muted look */
+    --disabled-text-color: #718096; /* Lighter gray for disabled text */
+    --error-color: #E53E3E; /* Vibrant Red */
+    --success-color: #38A169; /* Vibrant Green */
+    --warn-color: #DD6B20; /* Vibrant Orange */
+
+    --font-family: 'Poppins', 'Inter', 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; /* Added Poppins */
+    --font-family-monospace: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; /* Added JetBrains Mono */
+    --border-radius: 10px; /* Softer rounding */
+    --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* Softer, diffused shadow */
+    --input-padding: 12px 16px; /* Adjusted padding */
+    --transition-speed: 0.2s; /* Slightly faster transitions */
+}
+
+body {
+    font-family: var(--font-family);
+    margin: 0;
+    padding: 0;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    font-size: 15px;
+    line-height: 1.6; /* Adjusted line height */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    padding: 30px; /* Increased padding */
+    max-width: 1320px; /* Slightly wider */
+    margin: 0 auto;
+    gap: 30px; /* Increased gap */
+}
+
+/* Card-like styling for major sections */
+.controls-area,
+.tabs-area {
+    background-color: var(--surface-color);
+    padding: 25px; /* Increased padding */
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+    border: 1px solid var(--border-color);
+}
+
+header.controls-area h2,
+main.tabs-area h3 {
+    margin-top: 0;
+    color: var(--primary-color);
+    font-weight: 700; /* Bolder headings */
+    padding-bottom: 15px; /* Increased padding */
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 25px; /* Increased margin */
+    letter-spacing: 0.5px;
+}
+
+.control-group {
+    margin-bottom: 20px; /* Increased margin */
+}
+
+.control-group label {
+    display: block;
+    margin-bottom: 8px; /* Increased margin */
+    font-weight: 600; /* Bolder labels */
+    color: var(--text-light-color);
+    font-size: 0.95em;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"],
+textarea,
+select { /* Added select styling */
+    width: 100%;
+    padding: var(--input-padding);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-sizing: border-box;
+    font-family: var(--font-family);
+    font-size: 1em;
+    background-color: var(--surface-color); /* Changed to surface color for better contrast */
+    color: var(--text-color); /* Input text color */
+    transition: border-color var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+textarea:focus,
+select:focus { /* Added select focus */
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(46, 134, 171, 0.25); /* Updated primary color shadow */
+}
+
+/* Toggle Switch Styles for Checkboxes */
+input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    height: 22px; /* Height of the track */
+    width: 40px;  /* Width of the track */
+    background-color: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 11px; /* Fully rounded track */
+    cursor: pointer;
+    position: relative;
+    top: 5px; /* Adjust vertical alignment with label */
+    margin-right: 10px;
+    transition: background-color var(--transition-speed) ease, border-color var(--transition-speed) ease;
+    outline: none; /* Remove default outline, custom focus below */
+}
+
+input[type="checkbox"]::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;  /* Diameter of the knob */
+    height: 16px; /* Diameter of the knob */
+    background-color: var(--text-light-color);
+    border-radius: 50%; /* Circular knob */
+    transition: transform var(--transition-speed) ease, background-color var(--transition-speed) ease;
+}
+
+input[type="checkbox"]:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+input[type="checkbox"]:checked::after {
+    transform: translateX(18px); /* Move knob to the right */
+    background-color: white; /* Knob color when checked */
+}
+
+input[type="checkbox"]:focus {
+    /* Using box-shadow for focus to avoid altering layout */
+    box-shadow: 0 0 0 2.5px rgba(46, 134, 171, 0.35);
+}
+
+input[type="checkbox"]:hover:not(:checked) {
+    border-color: var(--primary-hover-color);
+}
+input[type="checkbox"]:hover:not(:checked)::after {
+    background-color: var(--text-color);
+}
+
+
+input[type="checkbox"]:disabled {
+    background-color: var(--disabled-color);
+    border-color: var(--disabled-color);
+    cursor: not-allowed;
+}
+
+input[type="checkbox"]:disabled::after {
+    background-color: var(--text-light-color);
+    opacity: 0.7;
+}
+
+input[type="checkbox"]:disabled:checked {
+    background-color: var(--disabled-color);
+}
+
+input[type="checkbox"]:disabled:checked::after {
+    background-color: var(--disabled-text-color);
+    opacity: 0.7;
+}
+
+textarea {
+    resize: vertical;
+    min-height: 100px; /* Increased min-height */
+}
+
+button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 12px 20px; /* Adjusted padding */
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: 1em;
+    font-weight: 600;
+    margin-right: 10px;
+    transition: background-color var(--transition-speed) ease, transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+    /* text-transform: uppercase; Removed for a softer look */
+    /* letter-spacing: 0.5px; Removed */
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15); /* Adjusted shadow */
+}
+
+button:hover {
+    background-color: var(--primary-hover-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2); /* Adjusted shadow */
+}
+button:active {
+    transform: translateY(0px);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15); /* Adjusted shadow */
+}
+
+button:disabled {
+    background-color: var(--disabled-color);
+    color: var(--disabled-text-color);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+button.secondary {
+    background-color: var(--secondary-color);
+}
+button.secondary:hover {
+    background-color: var(--secondary-hover-color);
+}
+
+
+main.tabs-area {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.tab-buttons {
+    display: flex;
+    margin-bottom: 25px; /* Increased margin */
+    border-bottom: 2px solid var(--border-color); /* Thicker border */
+}
+
+.tab-button {
+    background-color: transparent;
+    color: var(--text-light-color);
+    border: none;
+    padding: 14px 20px; /* Adjusted padding */
+    cursor: pointer;
+    font-size: 1.05em;
+    font-weight: 600;
+    border-bottom: 4px solid transparent;
+    margin-right: 10px;
+    transition: color var(--transition-speed) ease, border-bottom-color var(--transition-speed) ease;
+    position: relative; /* For pseudo-element animations */
+}
+.tab-button::after {
+    content: '';
+    position: absolute;
+    bottom: -2px; /* Align with the parent's border-bottom */
+    left: 0;
+    width: 0;
+    height: 4px;
+    background-color: var(--primary-color);
+    transition: width var(--transition-speed) ease;
+}
+
+.tab-button.active {
+    color: var(--primary-color);
+    /* border-bottom-color: var(--primary-color); No longer needed, use ::after */
+    font-weight: 700; /* Even bolder for active */
+}
+.tab-button.active::after {
+    width: 100%;
+}
+
+
+.tab-button:hover:not(.active) {
+    color: var(--primary-color);
+}
+.tab-button:hover:not(.active)::after {
+    width: 100%;
+}
+
+
+.tab-content {
+    display: none;
+    flex-grow: 1;
+    flex-direction: column;
+    animation: fadeIn var(--transition-speed) ease-in-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.tab-content.active {
+    display: flex;
+}
+
+#file-list-area, /* Generic selector for both SRT and Video file lists */
+#srt-file-list-area,
+#video-file-list-area {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 0;
+    min-height: 250px; /* Increased min-height */
+    overflow-y: auto;
+    flex-grow: 1;
+    background-color: var(--background-color); /* Match body background */
+}
+#file-list-area p,
+#srt-file-list-area p,
+#video-file-list-area p {
+    padding: 20px; /* Increased padding */
+    color: var(--text-light-color);
+    text-align: center;
+    font-style: italic;
+}
+
+
+.file-item {
+    display: grid;
+    /* Adjusted for delete button: delete | name | status | progress | retry */
+    grid-template-columns: auto minmax(200px, 2fr) 1fr auto auto;
+    gap: 15px; /* Slightly reduced gap to accommodate button */
+    align-items: center;
+    padding: 12px 15px; /* Slightly reduced padding */
+    border-bottom: 1px solid var(--border-color);
+    transition: background-color var(--transition-speed) ease;
+}
+.file-item:last-child {
+    border-bottom: none;
+}
+.file-item:hover {
+    background-color: var(--surface-color); /* Use surface color for hover */
+}
+
+.file-item .file-name {
+    font-weight: 600; /* Bolder name */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-color);
+}
+.file-item .file-status {
+    font-size: 0.9em; /* Slightly larger status */
+    color: var(--text-light-color);
+    min-width: 180px; /* Increased min-width */
+    text-align: left;
+}
+.file-item .progress-bar-container {
+    width: 150px; /* Increased width */
+    height: 10px; /* Increased height */
+    background-color: var(--border-color); /* Darker background for progress bar */
+    border-radius: 5px; /* Adjusted radius */
+    overflow: hidden;
+}
+.file-item .progress-bar {
+    width: 0%;
+    height: 100%;
+    background-color: var(--success-color);
+    border-radius: 5px; /* Adjusted radius */
+    transition: width var(--transition-speed) ease;
+}
+.file-item .file-status.Error .progress-bar,
+.file-item .file-status.Cancelled .progress-bar,
+.file-item .file-status.error .progress-bar, /* lowercase for JS consistency */
+.file-item .file-status.cancelled .progress-bar {
+    background-color: var(--error-color);
+}
+.file-item .retry-button {
+    padding: 8px 12px; /* Increased padding */
+    font-size: 0.9em; /* Slightly larger font */
+    background-color: var(--secondary-color);
+    text-transform: none; /* Normal case for retry button */
+    letter-spacing: normal;
+}
+.file-item .retry-button:hover {
+    background-color: var(--secondary-hover-color);
+}
+
+.file-item .delete-file-button {
+    background-color: transparent;
+    color: var(--text-light-color);
+    border: 1px solid var(--border-color);
+    padding: 4px 8px; /* Smaller padding */
+    font-size: 0.9em; /* Smaller font */
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: background-color var(--transition-speed) ease, color var(--transition-speed) ease, border-color var(--transition-speed) ease;
+    margin-right: 5px; /* Space between delete and name */
+    line-height: 1; /* Ensure icon is centered */
+    box-shadow: none;
+    width: 30px; /* Fixed width */
+    height: 30px; /* Fixed height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.file-item .delete-file-button:hover {
+    background-color: var(--error-color);
+    color: white;
+    border-color: var(--error-color);
+    transform: none; /* No transform for this button */
+    box-shadow: none;
+}
+
+.file-item .delete-file-button:disabled {
+    background-color: var(--disabled-color);
+    color: var(--disabled-text-color);
+    border-color: var(--disabled-color);
+    cursor: not-allowed;
+}
+
+
+#log-area {
+    width: 100%;
+    flex-grow: 1;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 15px;
+    font-family: var(--font-family-monospace);
+    font-size: 0.9em;
+    background-color: #171D25; /* Custom dark shade, darker than new --background-color */
+    color: var(--text-light-color); /* Using new text-light-color */
+    resize: none;
+    box-sizing: border-box;
+    line-height: 1.6;
+}
+
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 25px; /* Increased gap */
+    overflow-y: auto;
+    flex-grow: 1;
+    padding-right: 20px; /* Increased padding */
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group .input-group {
+    display: flex;
+    align-items: center;
+    gap: 12px; /* Increased gap */
+}
+.form-group .input-group input[type="text"] {
+    flex-grow: 1;
+}
+.form-group .input-group button {
+    flex-shrink: 0;
+    margin-right: 0; /* Remove margin for buttons inside input-group */
+}
+
+/* Specific styling for buttons in settings */
+#save-settings-button,
+#load-defaults-button {
+    align-self: flex-start;
+    margin-top: 10px; /* Add some top margin */
+}
+#load-defaults-button {
+    background-color: #4a4a6a; /* A muted secondary for dark theme */
+}
+#load-defaults-button:hover {
+    background-color: #5a5a7a;
+}
+
+/* Status specific text colors in file list */
+.file-status.Success, .file-status.success { color: var(--success-color); font-weight: 600; }
+.file-status.Error, .file-status.error { color: var(--error-color); font-weight: 600; }
+.file-status.Cancelled, .file-status.cancelled { color: var(--warn-color); font-weight: 600; }
+.file-status.Processing, .file-status.processing,
+.file-status.Queued, .file-status.queued,
+.file-status.Retrying, .file-status.retrying,
+.file-status.Cancelling, .file-status.cancelling { color: var(--primary-color); }
+
+/* New styles for reorganized HTML */
+.global-controls-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    align-items: end;
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    margin-top: 10px; /* Adjust as needed */
+}
+.checkbox-group input[type="checkbox"] {
+    /* Specific adjustments for checkbox within a group if needed, */
+    /* but general styles should cover it. Margin-right is already on the input. */
+    /* Ensure 'top' value aligns well with label text */
+}
+.checkbox-group label {
+    margin-bottom: 0; /* Override default label margin */
+    font-weight: normal; /* Less emphasis for checkbox label */
+}
+
+.action-button-group {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+    flex-wrap: wrap; /* Allow buttons to wrap on smaller screens */
+}
+.action-button-group button {
+    margin-right: 0; /* Remove individual button margin if using gap */
+}
+
+
+fieldset {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 20px;
+    margin-bottom: 25px;
+}
+
+legend {
+    padding: 0 10px;
+    font-weight: 700;
+    color: var(--primary-color);
+    font-size: 1.1em;
+}
+
+.settings-grid-col-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.settings-note {
+    font-size: 0.9em;
+    color: var(--text-light-color);
+    margin-bottom: 15px;
+    background-color: rgba(106, 90, 205, 0.1); /* Using SlateBlue RGB for --primary-color */
+    padding: 10px;
+    border-radius: var(--border-radius);
+    border-left: 3px solid var(--primary-color);
+}
+
+.tooltip {
+    display: inline-block;
+    margin-left: 5px;
+    background-color: var(--text-light-color);
+    color: var(--surface-color);
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    font-size: 12px;
+    line-height: 16px;
+    text-align: center;
+    cursor: help;
+    font-weight: bold;
+}
+
+.info-button { /* For the gear icon button */
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    font-size: 1.2em; /* Adjust size as needed */
+    padding: 5px;
+    cursor: pointer;
+    margin-left: 5px;
+    box-shadow: none;
+}
+.info-button:hover {
+    color: var(--primary-hover-color);
+    background: none; /* Ensure no background on hover */
+    transform: none; /* No transform for simple info button */
+    box-shadow: none;
+}
+.settings-actions {
+    margin-top: 20px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 20px;
+}
+
+/* --- Hold-to-activate button styling --- */
+button.button-hold-active {
+    /* Override hover/active transforms to keep it stable during hold */
+    transform: translateY(0px); /* Keep it slightly pressed like :active */
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15), 0 0 0 3px var(--primary-hover-color); /* Existing active shadow + a subtle glow */
+    background-color: var(--primary-hover-color); /* Use hover color to indicate active hold */
+    cursor: grabbing; /* Indicate it's being held */
+    position: relative; /* For pseudo-elements if needed for more advanced effects */
+    transition: background-color var(--transition-speed) ease, box-shadow var(--transition-speed) ease; /* Smooth transition to this state */
+}
+
+/* Optional: Add a subtle animation to the glow or button itself */
+button.button-hold-active::before {
+    content: '';
+    position: absolute;
+    top: -2px; left: -2px; right: -2px; bottom: -2px; /* Slightly outside the button */
+    border-radius: calc(var(--border-radius) + 2px); /* Match button's border-radius + offset */
+    border: 2px solid transparent;
+    animation: pulse-glow 1.5s infinite ease-in-out;
+    pointer-events: none; /* Ensure it doesn't interfere with clicks */
+}
+
+@keyframes pulse-glow {
+    0% {
+        border-color: rgba(46, 134, 171, 0.3); /* var(--primary-color) with alpha */
+        box-shadow: 0 0 5px rgba(46, 134, 171, 0.2);
+    }
+    50% {
+        border-color: rgba(46, 134, 171, 0.7); /* Brighter */
+        box-shadow: 0 0 10px rgba(46, 134, 171, 0.4);
+    }
+    100% {
+        border-color: rgba(46, 134, 171, 0.3);
+        box-shadow: 0 0 5px rgba(46, 134, 171, 0.2);
+    }
+}
+
+/* Ensure the text remains centered and readable */
+#start-srt-processing-button.button-hold-active {
+    /* Specific overrides if the countdown text needs different styling */
+    /* For example, if the text gets too long and needs smaller font temporarily */
+    /* font-size: 0.9em; */ /* Uncomment and adjust if needed */
+}
