@@ -272,7 +272,7 @@ function executeSrtProcessing() {
         targetLanguageCode: globalTargetLanguageInput.value,
         targetLanguageFullName: targetLanguagesWithNone.find(lang => lang.code === globalTargetLanguageInput.value)?.name || globalTargetLanguageInput.value,
         sourceLanguageOfSrt: globalSourceLanguageSelect.value, // Added this line
-        thinkingBudget: globalThinkingEnableCheckbox.checked ? 24576 : 0,
+        thinkingBudget: globalThinkingEnableCheckbox.checked ? -1 : 0,
     };
     
     if (window.electronAPI && window.electronAPI.sendStartSrtBatchProcessingRequest) {
@@ -402,7 +402,7 @@ if (startVideoProcessingButton) {
             targetLanguageFullName: targetLanguagesWithNone.find(lang => lang.code === globalTargetLanguageInput.value)?.name || globalTargetLanguageInput.value,
             transcriptionSourceLanguage: globalSourceLanguageSelect.value === "" ? null : globalSourceLanguageSelect.value,
             enableDiarization: globalDiarizationCheckbox.checked,
-            thinkingBudget: globalThinkingEnableCheckbox.checked ? 24576 : 0, // Added
+            thinkingBudget: globalThinkingEnableCheckbox.checked ? -1 : 0, // Added
         };
  
         if (window.electronAPI && window.electronAPI.sendStartVideoQueueProcessingRequest) {
@@ -793,32 +793,43 @@ if (window.electronAPI && window.electronAPI.onTranslationFileCompleted) {
         }
 
         if (fileToUpdate) {
-            // Main.js now sends more specific statuses like 'FailedTranscription', 'FailedTranslation'
-            fileToUpdate.status = data.status;
-            fileToUpdate.progress = 1; // Mark as 100%
-            if (isVideoJob) fileToUpdate.stage = undefined; // Clear stage for video on completion/failure
-
             const logMessagePrefix = isVideoJob ? `Video processing for ${fileToUpdate.name} (Job: ${data.jobId})` : `SRT Translation for ${fileToUpdate.name} (Job: ${data.jobId})`;
 
-            if (data.status === 'Success') {
-                appendToLog(`${logMessagePrefix} completed successfully. Output: ${data.outputPath}`, 'info', true);
-            } else if (data.status === 'Error' || data.status.startsWith('Failed')) { // Catch 'FailedTranscription', 'FailedTranslation'
-                appendToLog(`Error in ${logMessagePrefix}: ${data.error}`, 'error', true);
-            } else if (data.status === 'Cancelled') {
-                appendToLog(`${logMessagePrefix} was cancelled.`, 'warn', true);
+            // For video, only set final "Success" if phaseCompleted is 'full_pipeline'
+            if (isVideoJob && data.status === 'Success' && data.phaseCompleted !== 'full_pipeline') {
+                // This is an intermediate success (e.g., summarization complete)
+                // Update status to reflect waiting for the next phase, but don't mark as final success.
+                // The progress update from main.js should provide the next status.
+                // For now, we can log it and ensure the UI doesn't show "Success" prematurely.
+                fileToUpdate.status = `Phase '${data.phaseCompleted}' OK, awaiting next...`; // Or a more generic "Processing..."
+                // Keep progress as is, or main.js progress update will set it.
+                // Do not set fileToUpdate.progress = 1 here for intermediate video phases.
+                appendToLog(`${logMessagePrefix} - intermediate phase '${data.phaseCompleted}' completed. Output: ${data.outputPath || 'N/A'}`, 'info', true);
+            } else {
+                // This is a final state (Success with full_pipeline, Error, Cancelled, or SRT success)
+                fileToUpdate.status = data.status;
+                fileToUpdate.progress = 1; // Mark as 100% for final states
+                if (data.status === 'Success') {
+                    appendToLog(`${logMessagePrefix} completed successfully. Output: ${data.outputPath}`, 'info', true);
+                } else if (data.status === 'Error' || data.status.startsWith('Failed')) {
+                    appendToLog(`Error in ${logMessagePrefix}: ${data.error}`, 'error', true);
+                } else if (data.status === 'Cancelled') {
+                    appendToLog(`${logMessagePrefix} was cancelled.`, 'warn', true);
+                }
             }
+            
+            if (isVideoJob) fileToUpdate.stage = undefined; // Clear stage for video on any completion/failure message
 
             if (isSrtJob) {
                 updateSrtFileListItem(fileToUpdate);
-                activeSrtJobDetails.jobIds.delete(data.jobId); // Remove job ID when SRT file is done
+                activeSrtJobDetails.jobIds.delete(data.jobId);
                 checkAllSrtFilesProcessed();
             } else if (isVideoJob) {
                 updateVideoFileListItem(fileToUpdate);
-                // No specific currentJobId to clear here, batch completion is checked by checkAllVideoFilesProcessed
                 checkAllVideoFilesProcessed();
             }
         } else {
-            appendToLog(`Received completion for unknown job/file: ${data.filePath}, JobID: ${data.jobId}, Type: ${data.type}`, 'warn', true);
+            appendToLog(`Received completion for unknown job/file: ${data.filePath}, JobID: ${data.jobId}, Type: ${data.type}, Phase: ${data.phaseCompleted}`, 'warn', true);
         }
     });
 }
@@ -1335,7 +1346,7 @@ saveSettingsButton.addEventListener('click', () => {
         targetLanguage: globalTargetLanguageInput.value,
         transcriptionSourceLanguage: globalSourceLanguageSelect.value === "" ? null : globalSourceLanguageSelect.value,
         enableDiarization: globalDiarizationCheckbox.checked,
-        thinkingBudget: globalThinkingEnableCheckbox.checked ? 24576 : 0, // Added
+        thinkingBudget: globalThinkingEnableCheckbox.checked ? -1 : 0, // Added
         // enableVideoResegmentation: globalEnableResegmentationCheckbox.checked, // Removed
  
         // API & Translation Parameters
@@ -1395,7 +1406,7 @@ function loadSettingsIntoForm(settings) {
     populateLanguageDropdown(globalTargetLanguageInput, targetLanguagesWithNone, settings.targetLanguage || 'en');
     populateLanguageDropdown(globalSourceLanguageSelect, isoLanguages, settings.transcriptionSourceLanguage || "");
     if (globalDiarizationCheckbox) globalDiarizationCheckbox.checked = !!settings.enableDiarization;
-    if (globalThinkingEnableCheckbox) globalThinkingEnableCheckbox.checked = (settings.thinkingBudget === 24576); // Added
+    if (globalThinkingEnableCheckbox) globalThinkingEnableCheckbox.checked = (settings.thinkingBudget === -1); // Added
 
 
     apiKeyInput.value = settings.apiKey || '';
@@ -1623,7 +1634,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (globalThinkingEnableCheckbox) { // Added
         globalThinkingEnableCheckbox.addEventListener('change', (event) => { // Added
             if (currentSettings) { // Added
-                currentSettings.thinkingBudget = event.target.checked ? 24576 : 0; // Added
+                currentSettings.thinkingBudget = event.target.checked ? -1 : 0; // Added
             } // Added
         }); // Added
     } // Added

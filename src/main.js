@@ -280,14 +280,21 @@ class GlobalFileAdmissionController extends EventEmitter {
             job.progress = 100;
 
             console.log(`Job completed: ${jobId} for ${job.filePath}. Status: ${finalStatus}. Active jobs: ${this.activeFileJobs.size}.`);
-            this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, {
+            
+            const ipcPayload = {
                 filePath: job.filePath,
                 jobId: job.jobId,
                 status: finalStatus,
                 error: errorMsg,
                 outputPath: outputPath,
-                type: getIpcTypeFromJobType(job.type) // Use helper
-            });
+                type: getIpcTypeFromJobType(job.type)
+            };
+
+            if (job.type === 'video_summarization_phase' && finalStatus === 'Success') {
+                ipcPayload.phaseCompleted = 'summarization';
+            }
+
+            this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, ipcPayload);
 
             // Emit specific completion events based on job type
             if (job.type === 'video_translation_phase') {
@@ -869,10 +876,10 @@ You're an unchained {src_lang} and {tgt_lang} subtitle translator for an online 
 ## Task
 Your goal is to read and understand the subtitle texts inside <summarize_request> section, then extract important data and format them into JSON object:
 1. "theme": A two-sentence string summarizing the whole text, first for main topic and second for key points
-2. "terms": An array of objects, each containing three strings representing a term:
-    - "src": {src_lang} name of the term
-    - "tgt": {tgt_lang} translation of the term
-    - "note": Brief one-sentence explanation of the term
+2. "terms": An array of objects, each containing three strings representing a term/name:
+    - "src": {src_lang} name of the term/name
+    - "tgt": {tgt_lang} translation of the term/name
+    - "note": Brief one-sentence explanation of the term/name
 
 ## Restriction
 1. Each terms must be unique and not overlapping
@@ -1638,7 +1645,7 @@ class VideoProcessingCoordinator extends EventEmitter {
                 rawSrtContent = await fs.readFile(preTranslationSrtPath, 'utf8');
             } catch (readErr) {
                 this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `[${path.basename(jobData.filePath)}] Failed to read pre-translation SRT file ${preTranslationSrtPath}: ${readErr.message}`, level: 'error' });
-                this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: jobData.filePath, jobId, status: 'Error', error: `Failed to read pre-translation SRT file: ${readErr.message}`, type: 'video'});
+                this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: jobData.filePath, jobId, status: 'Error', error: `Failed to read pre-translation SRT file: ${readErr.message}`, type: 'video', phaseCompleted: 'full_pipeline'});
                 this._checkBatchCompletion();
                 return;
             }
@@ -1646,7 +1653,7 @@ class VideoProcessingCoordinator extends EventEmitter {
 
             if (!rawSrtContent || !rawSrtContent.trim()) {
                 this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `[${path.basename(jobData.filePath)}] Pre-translation SRT content is empty.`, level: 'error' });
-                this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: jobData.filePath, jobId, status: 'Error', error: 'Empty pre-translation SRT content.', type: 'video'});
+                this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: jobData.filePath, jobId, status: 'Error', error: 'Empty pre-translation SRT content.', type: 'video', phaseCompleted: 'full_pipeline'});
                 this._checkBatchCompletion();
                 return;
             }
@@ -1655,14 +1662,14 @@ class VideoProcessingCoordinator extends EventEmitter {
                 this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `[${path.basename(jobData.filePath)}] Translation disabled. Transcription output is final.`, level: 'info' });
                 jobData.status = 'Success (No Translation)';
                 jobData.outputPath = preTranslationSrtPath;
-                this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: jobData.filePath, jobId, status: 'Success (No Translation)', outputPath: preTranslationSrtPath, type: 'video'});
+                this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: jobData.filePath, jobId, status: 'Success (No Translation)', outputPath: preTranslationSrtPath, type: 'video', phaseCompleted: 'full_pipeline'});
                 this._checkBatchCompletion();
                 return;
             }
 
             // Proceed to summarization (if enabled) or directly to translation via GFC
             if (this.allSettings.enableSummarization) {
-                this.sendIpcMessage(ipcChannels.TRANSLATION_PROGRESS_UPDATE, { filePath: jobData.filePath, jobId, progress: 50, status: 'Queued for Summarization...', stage: 'summarizing_video', type: 'video' });
+                this.sendIpcMessage(ipcChannels.TRANSLATION_PROGRESS_UPDATE, { filePath: jobData.filePath, jobId, progress: 50, status: 'Transcription Complete, Queued for Summarization...', stage: 'summarizing_video', type: 'video' });
                 jobData.status = 'PendingSummarization';
                 const gfcSummarizationJobId = globalFileAdmissionController.addJob({
                     filePath: originalVideoJob.filePath, // Original video file path for tracking
@@ -1726,7 +1733,7 @@ class VideoProcessingCoordinator extends EventEmitter {
             if (jobData) {
                 jobData.status = 'FailedTranscription';
                 this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, {
-                    filePath: jobData.filePath, jobId, status: 'Error', error: `Transcription Failed: ${error}`, type: 'video'
+                    filePath: jobData.filePath, jobId, status: 'Error', error: `Transcription Failed: ${error}`, type: 'video', phaseCompleted: 'full_pipeline'
                 });
             }
             this._checkBatchCompletion();
@@ -1758,14 +1765,16 @@ class VideoProcessingCoordinator extends EventEmitter {
                     } else {
                         vpcJobToUpdate.error = error;
                     }
-                    this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, {
+                    const completionPayload = {
                         filePath: vpcJobToUpdate.filePath,
                         jobId: vpcJobToUpdate.originalJobData.jobId,
                         status: status,
                         outputPath: outputPath,
                         error: error,
-                        type: 'video'
-                    });
+                        type: 'video',
+                        phaseCompleted: 'full_pipeline' // Mark final pipeline completion
+                    };
+                    this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, completionPayload);
                     if (vpcJobToUpdate.preTranslationSrtPath) {
                          this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `[${path.basename(vpcJobToUpdate.filePath)}] Pre-translation SRT remains at: ${vpcJobToUpdate.preTranslationSrtPath}`, level: 'info' });
                     }
@@ -1783,14 +1792,16 @@ class VideoProcessingCoordinator extends EventEmitter {
         if (this.isBatchCancelled) {
             this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `[${path.basename(jobData.filePath)}] Batch cancelled. Skipping submission of translation job to GFC.`, level: 'warn' });
             jobData.status = 'Cancelled';
-            this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: jobData.filePath, jobId: jobData.originalJobData.jobId, status: 'Cancelled', error: 'Batch cancelled before translation phase.', type: 'video'});
+            this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: jobData.filePath, jobId: jobData.originalJobData.jobId, status: 'Cancelled', error: 'Batch cancelled before translation phase.', type: 'video', phaseCompleted: 'full_pipeline'});
             this._checkBatchCompletion();
             return;
         }
+        
+        const statusMessage = summaryContent ? 'Summarization Complete, Queued for Translation...' : 'Transcription Complete, Queued for Translation...';
 
         this.sendIpcMessage(ipcChannels.TRANSLATION_PROGRESS_UPDATE, {
             filePath: jobData.filePath, jobId: jobData.originalJobData.jobId, progress: 75, // Assuming summarization (or skip) is 75%
-            status: 'Queued for Translation...', stage: 'translating', type: 'video'
+            status: statusMessage, stage: 'translating', type: 'video'
         });
         jobData.status = 'PendingTranslation';
 
@@ -1816,13 +1827,13 @@ class VideoProcessingCoordinator extends EventEmitter {
             } else {
                 this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `[${path.basename(jobData.filePath)}] GFC rejected translation phase job.`, level: 'error' });
                 jobData.status = 'Error';
-                this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: jobData.filePath, jobId: jobData.originalJobData.jobId, status: 'Error', error: 'GFC rejected translation phase.', type: 'video'});
+                this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: jobData.filePath, jobId: jobData.originalJobData.jobId, status: 'Error', error: 'GFC rejected translation phase.', type: 'video', phaseCompleted: 'full_pipeline'});
                 this._checkBatchCompletion();
             }
         } else {
             this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `[${path.basename(jobData.filePath)}] Error: GFC not available for translation phase.`, level: 'error' });
             jobData.status = 'Error';
-            this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: jobData.filePath, jobId: jobData.originalJobData.jobId, status: 'Error', error: 'GFC not available for translation.', type: 'video'});
+            this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: jobData.filePath, jobId: jobData.originalJobData.jobId, status: 'Error', error: 'GFC not available for translation.', type: 'video', phaseCompleted: 'full_pipeline'});
             this._checkBatchCompletion();
         }
     }
@@ -1844,7 +1855,7 @@ class VideoProcessingCoordinator extends EventEmitter {
                 this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `Cannot start video batch: Gemini Service error. ${initError.message}`, level: 'error' });
                 this.initialVideoFiles.forEach(filePath => {
                     const tempJobId = `video-init-fail-${uuidv4()}`;
-                     this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath, jobId: tempJobId, status: 'Error', error: 'Gemini Service initialization failed.', type: 'video' });
+                     this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath, jobId: tempJobId, status: 'Error', error: 'Gemini Service initialization failed.', type: 'video', phaseCompleted: 'full_pipeline' });
                 });
                 return; // Stop if Gemini can't be initialized
             }

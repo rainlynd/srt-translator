@@ -24,7 +24,7 @@ module.exports = {
   // --- Existing/Shared IPC Channels (Review and ensure compatibility) ---
   TRANSLATION_PROGRESS_UPDATE: 'translation-progress-update', // payload: { filePath: string, jobId: string, progress: number, status: string, stage?: 'transcribing'|'translating', chunkInfo?: string, type?: 'video'|'srt' }
   TRANSLATION_LOG_MESSAGE: 'translation-log-message', // payload: { timestamp: number, message: string, level: 'info'|'warn'|'error' }
-  TRANSLATION_FILE_COMPLETED: 'translation-file-completed', // payload: { filePath: string, jobId: string, status: 'Success'|'Error'|'Cancelled', outputPath?: string, error?: string, type?: 'video'|'srt' }
+  TRANSLATION_FILE_COMPLETED: 'translation-file-completed', // payload: { filePath: string, jobId: string, status: 'Success'|'Error'|'Cancelled', outputPath?: string, error?: string, type?: 'video'|'srt', phaseCompleted?: string } // Added phaseCompleted
   // RETRY_FILE_REQUEST may need to be adapted or have new versions per tab if retry logic differs. For now, keep as is.
   RETRY_FILE_REQUEST: 'retry-file-request', // payload: { filePath: string, targetLanguage: string, settings: object, type: 'video'|'srt', jobIdToRetry?: string }
   

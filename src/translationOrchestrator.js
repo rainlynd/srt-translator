@@ -120,9 +120,9 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
  
             if (chunkAttempt > 3 && strongerRetryModelName && strongerRetryModelName.trim() !== '') {
                 modelAliasToUse = 'retry';
-                effectiveThinkingBudget = 32768; // Override for stronger model retry
+                effectiveThinkingBudget = -1; // Override since stronger model cannot disable thinking
                 // modelNameToLog = strongerRetryModelName; // For logging if needed
-                logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Attempt ${chunkAttempt}: Switching to Gemini PRO model ('${strongerRetryModelName}') for retry. Setting thinkingBudget to 32768.`, 'debug');
+                logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Attempt ${chunkAttempt}: Switching to Gemini PRO model ('${strongerRetryModelName}') for retry. Setting thinkingBudget to -1.`, 'debug');
             } else if (chunkAttempt > 3) { // Stronger model desired but not configured
                 // Stronger model desired but not configured, primary model continues with its thinkingBudget
                 logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Attempt ${chunkAttempt}: Would switch to stronger model, but no strongerRetryModelName configured. Using primary model ('${geminiModel}'). Thinking budget from UI: ${effectiveThinkingBudget}.`, 'warn');

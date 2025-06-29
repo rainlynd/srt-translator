@@ -73,8 +73,9 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
 
   let entryReminderItself = "";
   if (typeof numberOfEntriesInChunk === 'number' && numberOfEntriesInChunk > 0) {
-      entryReminderItself = `Ensure your response contains exactly ${numberOfEntriesInChunk} corresponding translated items in {lang}.\n\n`;
+      entryReminderItself = `Translate all ${numberOfEntriesInChunk} text segments in <input> section from {src} to {lang}.\n\n`;
       entryReminderItself = entryReminderItself.replace(/{lang}/g, targetLanguage);
+      entryReminderItself = entryReminderItself.replace(/{src}/g, srcReplacementValue);
   }
   combinedPromptPrefix += entryReminderItself;
 
@@ -90,7 +91,7 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
 
   let wrappedTextsPart = "";
   if (textsForUserPromptForEstimationContent) { // Only add tag if there's content
-      wrappedTextsPart = `<current_texts>\n${textsForUserPromptForEstimationContent}\n</current_texts>`;
+      wrappedTextsPart = `<input>\n${textsForUserPromptForEstimationContent}\n</input>`;
   }
   
   const finalUserPromptForEstimation = combinedPromptPrefix + wrappedTextsPart;
@@ -151,13 +152,13 @@ async function countTokens(text, modelAlias = 'primary') {
  * @param {number} [numberOfEntriesInChunk] - Optional: The number of entries in this specific chunk.
  * @param {AbortSignal} [abortSignal] - Optional: An AbortSignal to cancel the API request.
  * @param {string} [previousChunkContext] - Optional: Concatenated string of the last few lines from the previous chunk.
- * @param {number} [thinkingBudget=24576] - Optional: The thinking budget for the request.
+ * @param {number} [thinkingBudget=-1] - Optional: The thinking budget for the request.
  * @param {string} [modelAlias='primary'] - Optional: The model alias to use for translation.
  * @param {string} [sourceLanguageNameForPrompt] - Optional: The name/code of the source language for the {src} placeholder.
  * @returns {Promise<{translatedResponseArray: Array<{index: number, text: string}>, actualInputTokens: number, outputTokens: number}>}
  * - A promise that resolves to an object containing the translated array, actual input tokens, and output tokens.
  */
-async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, temperature, topP, numberOfEntriesInChunk, abortSignal = null, previousChunkContext = null, thinkingBudget = 24576, modelAlias = 'primary', sourceLanguageNameForPrompt) {
+async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, temperature, topP, numberOfEntriesInChunk, abortSignal = null, previousChunkContext = null, thinkingBudget = -1, modelAlias = 'primary', sourceLanguageNameForPrompt) {
   const modelName = modelInstances[modelAlias];
   if (!genAIInstance || !modelName) {
     throw new Error(`Gemini client or model for alias '${modelAlias}' not initialized. Call initializeGeminiModel first.`);
@@ -179,8 +180,9 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
 
   let entryReminderItself = "";
   if (typeof numberOfEntriesInChunk === 'number' && numberOfEntriesInChunk > 0) {
-      entryReminderItself = `Ensure your response contains exactly ${numberOfEntriesInChunk} corresponding translated items in {lang}.\n\n`;
+      entryReminderItself = `Translate all ${numberOfEntriesInChunk} text segments in <input> section from {src} to {lang}.\n\n`;
       entryReminderItself = entryReminderItself.replace(/{lang}/g, targetLanguage);
+      entryReminderItself = entryReminderItself.replace(/{src}/g, srcReplacementValue);
   }
   combinedPromptPrefix += entryReminderItself;
 
@@ -196,7 +198,7 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
   
   let wrappedTextsPart = "";
   if (textsForUserPromptContent) { // Only add tag if there's content
-      wrappedTextsPart = `<current_texts>\n${textsForUserPromptContent}\n</current_texts>`;
+      wrappedTextsPart = `<input>\n${textsForUserPromptContent}\n</input>`;
   }
 
   const userPromptContent = combinedPromptPrefix + wrappedTextsPart; // This is the final user prompt
@@ -350,8 +352,8 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
  * @param {object} geminiSettings - Settings for the Gemini API call.
  * @param {number} geminiSettings.temperature - The temperature for generation.
  * @param {number} geminiSettings.topP - The topP for generation.
- * @param {number} [geminiSettings.thinkingBudget=24576] - Optional: The thinking budget for the request.
- * @param {number} [geminiSettings.maxOutputTokens=8192] - Optional: Max output tokens.
+ * @param {number} [geminiSettings.thinkingBudget=-1] - Optional: The thinking budget for the request.
+ * @param {number} [geminiSettings.maxOutputTokens=65536] - Optional: Max output tokens.
  * @param {string} [modelAlias='primary'] - Optional: The model alias to use.
  * @param {AbortSignal} [abortSignal=null] - Optional: An AbortSignal to cancel the API request.
  * @param {string} targetLanguageFullName - The full name of the target language for the reminder message.
@@ -403,7 +405,7 @@ async function summarizeAndExtractTermsChunk(
       required: ["theme", "terms"]
     },
     thinkingConfig: {
-      thinkingBudget: 24576, // Changed from 24576
+      thinkingBudget: -1,
     },
     maxOutputTokens: geminiSettings.maxOutputTokens || 65536,
   };
@@ -418,7 +420,7 @@ async function summarizeAndExtractTermsChunk(
     console.debug(`[Gemini Summarize Request] Model Alias: ${modelAlias}`);
     console.debug(`[Gemini Summarize Request] System Prompt (Unchanged by this function):\n${summarySystemPrompt}`);
 
-    const reminderMessageTemplate = "Ensure your response contains summary and terminologies in {lang}.\n\n";
+    const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up tp 15 important names/terminologies in {lang}.\n\n";
     const formattedReminderMessage = reminderMessageTemplate.replace(/{lang}/g, targetLanguageFullName || "the target language"); // Fallback if targetLanguageFullName is not provided
     const wrappedTextChunk = `<summarize_request>\n${textChunk}\n</summarize_request>`;
     const finalUserPromptContent = formattedReminderMessage + wrappedTextChunk;

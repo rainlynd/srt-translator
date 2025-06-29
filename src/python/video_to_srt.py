@@ -272,8 +272,8 @@ def main():
 
         # Common SRT writer options
         writer_options_dict = {
-            "max_line_width": args.max_line_width, # WhisperX handles None if not set by arg
-            "max_line_count": args.max_line_count,
+            "max_line_width": None, # WhisperX handles None if not set by arg
+            "max_line_count": 1,
             "highlight_words": args.highlight_words
         }
 
@@ -380,7 +380,7 @@ def main():
             
             # Audio is already loaded before this if/else block
             print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 35, 'status': 'WhisperX transcribing (using pre-loaded audio)...'})}", file=sys.stdout, flush=True)
-            result = model.transcribe(audio, batch_size=args.batch_size, language=args.language)
+            result = model.transcribe(audio, batch_size=args.batch_size, chunk_size=10, language=args.language)
             
             detected_language = result["language"] # Update detected_language
             print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 60, 'status': 'WhisperX transcription complete.', 'detected_language': detected_language, 'duration_seconds': audio.shape[0] / whisperx.audio.SAMPLE_RATE})}", file=sys.stdout, flush=True)

@@ -132,7 +132,7 @@ async function processSrtForSummarization(jobDetails) {
             temperature: settings.temperature, // Use general settings or summarization-specific
             topP: settings.topP,
             thinkingBudget: settings.thinkingBudget, // from global settings
-            maxOutputTokens: settings.maxOutputTokensForSummarization || 8192, // summarization specific
+            maxOutputTokens: settings.maxOutputTokensForSummarization || 65536, // summarization specific
           };
 
           const { summaryResponse, actualInputTokens, outputTokens } = await geminiService.summarizeAndExtractTermsChunk(
