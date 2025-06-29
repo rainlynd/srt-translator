@@ -212,7 +212,7 @@ function formatSummaryOutputForTranslationPrompt(accumulatedSummary) {
   let output = "## Theme & Glossary\n";
 
   if (accumulatedSummary.theme && accumulatedSummary.theme.trim().length > 0) {
-    output += `${accumulatedSummary.theme.trim()}`;
+    output += `${accumulatedSummary.theme.trim()}\n`;
   }
 
   if (accumulatedSummary.terms && accumulatedSummary.terms.length > 0) {

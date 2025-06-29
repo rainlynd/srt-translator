@@ -28,11 +28,8 @@ You will receive context from previous data inside <previous_texts> section, and
 </input>
 \`\`\`
 
-## Task
-Your goal is to translate the art class subtitles in <input> section from {src} to {lang} as accurate as possible and output into JSON format while following restrictions inside <rules> section.
-
-## Output
-Your response MUST be a single array of JSON objects, each containing two properties:
+## Task & Output
+Your goal is to translate the art class subtitles in <input> section from {src} to {lang} as accurate as possible and output into JSON format while following restrictions inside <rules> section. Your response MUST be a single array of JSON objects, each containing two properties:
   a. "index": number order of the text segment.
   b. "text": translation of the text segment.
 Below is an example for the output:
@@ -57,7 +54,7 @@ Below is an example for the output:
 6. If a text segment is gibberish and untranslatable, try to interpret it using round brackets '()'.
 </rules>
 
-{summary_content}`,
+{summary_content}`.trim(),
   temperature: 0.3, // For Gemini translation
   topP: 0.95, // For Gemini translation
   enableSummarization: true, // New setting for summarization stage
