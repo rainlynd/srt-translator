@@ -8,18 +8,19 @@ const modelInstances = { primary: null, retry: null };
 /**
  * Initializes the DeepSeek client from the OpenAI SDK.
  * @param {string} apiKey - The DeepSeek API key.
+ * @param {string} baseUrl - The base URL for the DeepSeek API.
  */
-function initializeDeepSeekModel(apiKey, modelName = 'deepseek-chat', modelAlias = 'primary') {
+function initializeDeepSeekModel(apiKey, baseUrl, modelName = 'deepseek-chat', modelAlias = 'primary') {
   if (!apiKey) {
     throw new Error('API key is required to initialize DeepSeek model.');
   }
   try {
-    if (!deepseekAI) {
-        deepseekAI = new OpenAI({
-          apiKey: apiKey,
-          baseURL: 'https://api.deepseek.com',
-        });
-    }
+    // Always create a new instance if the baseUrl or apiKey might have changed.
+    // A more sophisticated check could compare old vs new values.
+    deepseekAI = new OpenAI({
+      apiKey: apiKey,
+      baseURL: baseUrl || 'https://api.deepseek.com',
+    });
     modelInstances[modelAlias] = modelName;
     console.log(`DeepSeek model "${modelName}" initialized for alias '${modelAlias}'.`);
   } catch (error) {
@@ -78,11 +79,12 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
 
     const messages = [{ role: 'system', content: processedSystemPrompt }];
 
+    let userPrompt = "";
     if (previousChunkContext && previousChunkContext.trim() !== "") {
-        messages.push({ role: 'user', content: `<previous_texts>\n${previousChunkContext.trim()}\n</previous_texts>` });
+        userPrompt += `<previous_texts>\n${previousChunkContext.trim()}\n</previous_texts>\n\n`;
     }
 
-    let userPrompt = `Translate all ${numberOfEntriesInChunk} text segments in <input> section from {src} to {lang}.\n\n`;
+    userPrompt += `Translate all ${numberOfEntriesInChunk} text segments in <input> section from {src} to {lang}.\n\n`;
     userPrompt = userPrompt.replace(/{lang}/g, targetLanguage).replace(/{src}/g, srcReplacementValue);
 
     let textsForUserPromptContent = "";
@@ -132,7 +134,7 @@ async function summarizeAndExtractTermsChunk(textChunk, summarySystemPrompt, gem
         return { summaryResponse: { theme: "", terms: [] }, actualInputTokens: 0, outputTokens: 0 };
     }
 
-    const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 15 important names/terminologies in {lang}.\n\n";
+    const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 30 important names/terminologies in {lang}.\n\n";
     const formattedReminderMessage = reminderMessageTemplate.replace(/{lang}/g, targetLanguageFullName || "the target language");
     const wrappedTextChunk = `<summarize_request>\n${textChunk}\n</summarize_request>`;
     const finalUserPromptContent = formattedReminderMessage + wrappedTextChunk;

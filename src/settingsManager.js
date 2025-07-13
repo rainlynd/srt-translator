@@ -15,6 +15,9 @@ const defaultSettings = {
   // Provider Settings
   modelProvider: 'gemini', // 'gemini' or 'deepseek'
   deepseekApiKey: '',
+  deepseekBaseUrl: 'https://api.deepseek.com',
+  deepseekModel: 'deepseek-chat',
+  deepseekStrongerModel: 'deepseek-reasoner',
 
   // Core Gemini API Settings
   apiKey: '',

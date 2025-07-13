@@ -72,6 +72,12 @@ const deepseekApiKeyGroup = document.getElementById('deepseek-api-key-group');
 const geminiModelGroup = document.getElementById('gemini-model-group');
 const geminiStrongerModelGroup = document.getElementById('gemini-stronger-model-group');
 const deepseekModelGroup = document.getElementById('deepseek-model-group');
+const deepseekStrongerModelGroup = document.getElementById('deepseek-stronger-model-group');
+const deepseekBaseUrlGroup = document.getElementById('deepseek-base-url-group');
+const deepseekBaseUrlInput = document.getElementById('deepseek-base-url');
+const deepseekModelCustomInput = document.getElementById('deepseek-model-custom');
+const strongerDeepseekModelSelect = document.getElementById('stronger-deepseek-model-select');
+const strongerDeepseekModelCustomInput = document.getElementById('stronger-deepseek-model-custom');
 const geminiModelSelect = document.getElementById('gemini-model-select');
 const geminiModelCustomInput = document.getElementById('gemini-model-custom');
 const strongerGeminiModelSelect = document.getElementById('stronger-gemini-model-select'); // Added
@@ -1303,6 +1309,24 @@ if (strongerGeminiModelSelect) {
     });
 }
 
+deepseekModelSelect.addEventListener('change', () => {
+    if (deepseekModelSelect.value === 'custom') {
+        deepseekModelCustomInput.style.display = 'block';
+        deepseekModelCustomInput.value = '';
+    } else {
+        deepseekModelCustomInput.style.display = 'none';
+    }
+});
+
+strongerDeepseekModelSelect.addEventListener('change', () => {
+    if (strongerDeepseekModelSelect.value === 'custom') {
+        strongerDeepseekModelCustomInput.style.display = 'block';
+        strongerDeepseekModelCustomInput.value = '';
+    } else {
+        strongerDeepseekModelCustomInput.style.display = 'none';
+    }
+});
+
 saveSettingsButton.addEventListener('click', () => {
     let geminiModelValue;
     if (geminiModelSelect.value === 'custom') {
@@ -1349,10 +1373,27 @@ saveSettingsButton.addEventListener('click', () => {
     document.querySelectorAll('.settings-form input, .settings-form select, .settings-form textarea').forEach(el => el.classList.remove('input-error'));
 
 
+    let deepseekModelValue;
+    if (deepseekModelSelect.value === 'custom') {
+        deepseekModelValue = deepseekModelCustomInput.value.trim();
+    } else {
+        deepseekModelValue = deepseekModelSelect.value;
+    }
+
+    let strongerDeepseekModelValue;
+    if (strongerDeepseekModelSelect.value === 'custom') {
+        strongerDeepseekModelValue = strongerDeepseekModelCustomInput.value.trim();
+    } else {
+        strongerDeepseekModelValue = strongerDeepseekModelSelect.value;
+    }
+
     const settingsToSave = {
         // Provider Settings
         modelProvider: modelProviderSelect.value,
         deepseekApiKey: deepseekApiKeyInput.value,
+        deepseekBaseUrl: deepseekBaseUrlInput.value.trim(),
+        deepseekModel: deepseekModelValue,
+        deepseekStrongerModel: strongerDeepseekModelValue,
 
         // Global Language Settings
         targetLanguage: globalTargetLanguageInput.value,
@@ -1417,6 +1458,42 @@ function loadSettingsIntoForm(settings) {
     // Load Provider Settings
     modelProviderSelect.value = settings.modelProvider || 'gemini';
     deepseekApiKeyInput.value = settings.deepseekApiKey || '';
+    deepseekBaseUrlInput.value = settings.deepseekBaseUrl || 'https://api.deepseek.com';
+    
+    const deepseekModelValue = settings.deepseekModel || 'deepseek-chat';
+    const isDeepseekPredefined = Array.from(deepseekModelSelect.options).some(option => option.value === deepseekModelValue);
+
+    if (isDeepseekPredefined) {
+        deepseekModelSelect.value = deepseekModelValue;
+        deepseekModelCustomInput.style.display = 'none';
+        deepseekModelCustomInput.value = '';
+    } else if (deepseekModelValue) {
+        deepseekModelSelect.value = 'custom';
+        deepseekModelCustomInput.style.display = 'block';
+        deepseekModelCustomInput.value = deepseekModelValue;
+    } else {
+        deepseekModelSelect.value = deepseekModelSelect.options[0].value;
+        deepseekModelCustomInput.style.display = 'none';
+        deepseekModelCustomInput.value = '';
+    }
+
+    const strongerDeepseekModelValue = settings.deepseekStrongerModel || 'deepseek-reasoner';
+    const isStrongerDeepseekPredefined = Array.from(strongerDeepseekModelSelect.options).some(option => option.value === strongerDeepseekModelValue);
+
+    if (isStrongerDeepseekPredefined) {
+        strongerDeepseekModelSelect.value = strongerDeepseekModelValue;
+        strongerDeepseekModelCustomInput.style.display = 'none';
+        strongerDeepseekModelCustomInput.value = '';
+    } else if (strongerDeepseekModelValue) {
+        strongerDeepseekModelSelect.value = 'custom';
+        strongerDeepseekModelCustomInput.style.display = 'block';
+        strongerDeepseekModelCustomInput.value = strongerDeepseekModelValue;
+    } else {
+        strongerDeepseekModelSelect.value = strongerDeepseekModelSelect.options[0].value;
+        strongerDeepseekModelCustomInput.style.display = 'none';
+        strongerDeepseekModelCustomInput.value = '';
+    }
+
     toggleProviderSettings(modelProviderSelect.value);
 
 
@@ -1590,12 +1667,16 @@ function toggleProviderSettings(provider) {
         geminiStrongerModelGroup.style.display = 'block';
         deepseekApiKeyGroup.style.display = 'none';
         deepseekModelGroup.style.display = 'none';
+        deepseekStrongerModelGroup.style.display = 'none';
+        deepseekBaseUrlGroup.style.display = 'none';
     } else if (provider === 'deepseek') {
         geminiApiKeyGroup.style.display = 'none';
         geminiModelGroup.style.display = 'none';
         geminiStrongerModelGroup.style.display = 'none';
         deepseekApiKeyGroup.style.display = 'block';
         deepseekModelGroup.style.display = 'block';
+        deepseekStrongerModelGroup.style.display = 'block';
+        deepseekBaseUrlGroup.style.display = 'block';
     }
 }
 

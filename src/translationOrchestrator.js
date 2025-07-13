@@ -119,7 +119,12 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
             let effectiveThinkingBudget = uiControlledThinkingBudget; // Default to UI-controlled value
  
             if (settings.modelProvider === 'deepseek') {
-                modelAliasToUse = 'primary'; // DeepSeek uses the same model for retries
+               if (chunkAttempt > 3 && settings.deepseekStrongerModel && settings.deepseekStrongerModel.trim() !== '') {
+                   modelAliasToUse = 'retry';
+                   logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Attempt ${chunkAttempt}: Switching to stronger DeepSeek model ('${settings.deepseekStrongerModel}') for retry.`, 'debug');
+               } else {
+                   modelAliasToUse = 'primary';
+               }
             } else if (chunkAttempt > 3 && strongerRetryModelName && strongerRetryModelName.trim() !== '') {
                 modelAliasToUse = 'retry';
                 effectiveThinkingBudget = -1; // Override since stronger model cannot disable thinking

@@ -96,6 +96,10 @@
                             <label for="deepseek-api-key">DeepSeek API Key:</label>
                             <input type="password" id="deepseek-api-key" placeholder="Enter your DeepSeek API key">
                         </div>
+                        <div class="form-group" id="deepseek-base-url-group" style="display: none;">
+                            <label for="deepseek-base-url">DeepSeek Base URL:</label>
+                            <input type="text" id="deepseek-base-url" placeholder="e.g., https://api.deepseek.com">
+                        </div>
                         <div class="form-group" id="gemini-model-group">
                             <label for="gemini-model">Gemini Model:</label>
                             <select id="gemini-model-select">
@@ -118,7 +122,18 @@
                             <select id="deepseek-model-select">
                                 <option value="deepseek-reasoner">deepseek-reasoner</option>
                                 <option value="deepseek-chat">deepseek-chat</option>
+                                <option value="custom">Custom Model</option>
                             </select>
+                            <input type="text" id="deepseek-model-custom" style="display: none;" placeholder="Enter custom model name">
+                        </div>
+                        <div class="form-group" id="deepseek-stronger-model-group" style="display: none;">
+                            <label for="stronger-deepseek-model-select">Stronger Retry Model:</label>
+                            <select id="stronger-deepseek-model-select">
+                                <option value="deepseek-reasoner">deepseek-reasoner</option>
+                                <option value="deepseek-chat">deepseek-chat</option>
+                                <option value="custom">Custom Stronger Model</option>
+                            </select>
+                            <input type="text" id="stronger-deepseek-model-custom" style="display: none;" placeholder="Enter custom stronger model name">
                         </div>
                     </fieldset>
 

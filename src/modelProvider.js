@@ -34,12 +34,14 @@ async function getProvider() {
   }
 
   if (providerName === 'deepseek') {
-    if (!deepseekService.isInitialized()) {
-        if(settings.deepseekApiKey) {
-            deepseekService.initializeDeepSeekModel(settings.deepseekApiKey);
-        } else {
-            console.warn("Attempted to get DeepSeek provider, but it's not initialized.");
+    // For DeepSeek, we re-initialize every time to ensure the correct API key, base URL, and model are used.
+    if (settings.deepseekApiKey) {
+        deepseekService.initializeDeepSeekModel(settings.deepseekApiKey, settings.deepseekBaseUrl, settings.deepseekModel, 'primary');
+        if (settings.deepseekStrongerModel) {
+            deepseekService.initializeDeepSeekModel(settings.deepseekApiKey, settings.deepseekBaseUrl, settings.deepseekStrongerModel, 'retry');
         }
+    } else {
+        console.warn("Attempted to get DeepSeek provider, but it's not initialized (missing API key).");
     }
     currentProvider = deepseekService;
     return deepseekService;
