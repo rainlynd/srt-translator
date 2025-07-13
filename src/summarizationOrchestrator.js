@@ -4,7 +4,7 @@
 
 const { parseSRT, srtEntriesToText, combineSrtText } = require('./srtUtils'); // Assuming srtUtils.js exists or will be created
 const summarizationHelper = require('./summarizationHelper');
-const geminiService = require('./geminiService'); // To access countTokens and summarizeAndExtractTermsChunk
+const modelProvider = require('./modelProvider'); // To access countTokens and summarizeAndExtractTermsChunk
 const { getSettings } = require('./settingsManager'); // To get default settings
 
 const DEFAULT_MAX_TOKENS_PER_SUMMARY_CHUNK = 10000; // As per plan
@@ -125,7 +125,7 @@ async function processSrtForSummarization(jobDetails) {
         logCallback(jobId, `Attempt ${attempt}/${maxAttempts} for summarizing chunk ${i + 1} with model ${currentModelAlias}.`, 'info');
 
         try {
-          const inputTokensForChunk = await geminiService.countTokens(textChunk + currentSummarySystemPrompt, currentModelAlias);
+          const inputTokensForChunk = await modelProvider.countTokens(textChunk + currentSummarySystemPrompt, currentModelAlias);
           await gfc.requestApiResources(jobId, inputTokensForChunk); // 'summarize' type for GFC
 
           const geminiApiSettings = {
@@ -135,7 +135,7 @@ async function processSrtForSummarization(jobDetails) {
             maxOutputTokens: settings.maxOutputTokensForSummarization || 65536, // summarization specific
           };
 
-          const { summaryResponse, actualInputTokens, outputTokens } = await geminiService.summarizeAndExtractTermsChunk(
+          const { summaryResponse, actualInputTokens, outputTokens } = await modelProvider.summarizeAndExtractTermsChunk(
             textChunk,
             currentSummarySystemPrompt,
             geminiApiSettings,

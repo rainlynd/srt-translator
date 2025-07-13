@@ -3,7 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs').promises; // Added fs.promises
 const ipcChannels = require('./ipcChannels');
 const settingsManager = require('./settingsManager');
-const geminiService = require('./geminiService');
+const modelProvider = require('./modelProvider');
 const { processSRTFile, setTranslationCancellation } = require('./translationOrchestrator');
 const transcriptionService = require('./transcriptionService'); // Added
 const summarizationOrchestrator = require('./summarizationOrchestrator'); // Added
@@ -788,25 +788,10 @@ app.whenReady().then(async () => {
     console.warn('session.defaultSession is not available to set CSP.');
   }
 
-  // Load settings and initialize Gemini model
+  // Load settings and initialize the appropriate model provider
   try {
     const settings = await settingsManager.loadSettings();
-    if (settings.apiKey && settings.geminiModel) {
-      try {
-        geminiService.initializeGeminiModel(settings.apiKey, settings.geminiModel, 'primary');
-        console.log('Primary Gemini Service initialized on app ready.');
-        if (settings.strongerRetryModelName && settings.strongerRetryModelName.trim() !== '') {
-          geminiService.initializeGeminiModel(settings.apiKey, settings.strongerRetryModelName, 'retry');
-          console.log('Stronger retry Gemini Service initialized on app ready.');
-        } else {
-          console.warn('Stronger retry model name not configured. Retry model not initialized.');
-        }
-      } catch (initError) {
-        console.error('Failed to initialize Gemini Service(s) on app ready:', initError);
-      }
-    } else {
-      console.warn('API key or primary model not found in settings. Gemini Service not initialized yet.');
-    }
+    await modelProvider.reinitializeProvider();
 
     // Initialize GlobalFileAdmissionController here
     if (mainWindow && mainWindow.webContents) {
@@ -1109,16 +1094,8 @@ ipcMain.on(ipcChannels.SELECT_DIRECTORY_REQUEST, async (event, identifier) => {
 ipcMain.handle(ipcChannels.LOAD_SETTINGS_REQUEST, async () => { // Using handle for direct response
   try {
     const settings = await settingsManager.loadSettings();
-    // If Gemini is not initialized and we have key/model, try now.
-    if (settings.apiKey && settings.geminiModel && !geminiService.isInitialized()) { // Assuming an isInitialized method
-        try {
-            geminiService.initializeGeminiModel(settings.apiKey, settings.geminiModel);
-            console.log('Gemini Service initialized via settings load.');
-        } catch (initError) {
-            console.error('Failed to initialize Gemini Service during settings load:', initError);
-            // Don't let this fail the settings load, renderer can show an error.
-        }
-    }
+    // Re-initialize provider on load, to be safe.
+    await modelProvider.reinitializeProvider();
     return { settings };
   } catch (error) {
     console.error('Error loading settings in main:', error);
@@ -1129,25 +1106,7 @@ ipcMain.handle(ipcChannels.LOAD_SETTINGS_REQUEST, async () => { // Using handle 
 ipcMain.on(ipcChannels.LOAD_SETTINGS_REQUEST, async (event) => {
   try {
     const settings = await settingsManager.loadSettings();
-     if (settings.apiKey && settings.geminiModel) { // Check if geminiService has an isInitialized method or similar
-        try {
-            // Avoid re-initializing if already done. Add a check in geminiService if needed.
-            geminiService.initializeGeminiModel(settings.apiKey, settings.geminiModel);
-            console.log('Gemini Service (re)initialized via settings load.');
-             event.sender.send(ipcChannels.TRANSLATION_LOG_MESSAGE, {
-                timestamp: Date.now(),
-                message: 'Gemini Service initialized with new API key/model.',
-                level: 'info',
-            });
-        } catch (initError) {
-            console.error('Failed to initialize Gemini Service during settings load:', initError);
-             event.sender.send(ipcChannels.TRANSLATION_LOG_MESSAGE, {
-                timestamp: Date.now(),
-                message: `Failed to initialize Gemini Service: ${initError.message}`,
-                level: 'error',
-            });
-        }
-    }
+    await modelProvider.reinitializeProvider();
     event.sender.send(ipcChannels.LOAD_SETTINGS_RESPONSE, { settings });
   } catch (error) {
     console.error('Error loading settings in main:', error);
@@ -1158,58 +1117,15 @@ ipcMain.on(ipcChannels.LOAD_SETTINGS_REQUEST, async (event) => {
 ipcMain.on(ipcChannels.SAVE_SETTINGS_REQUEST, async (event, settingsToSave) => {
   try {
     await settingsManager.saveSettings(settingsToSave);
-    // If API key or model changed, re-initialize Gemini Service
-    if (settingsToSave.apiKey) {
-        let primaryModelInitialized = false;
-        let retryModelInitialized = false;
-        if (settingsToSave.geminiModel) {
-            try {
-                geminiService.initializeGeminiModel(settingsToSave.apiKey, settingsToSave.geminiModel, 'primary');
-                console.log('Primary Gemini Service re-initialized due to settings change.');
-                event.sender.send(ipcChannels.TRANSLATION_LOG_MESSAGE, {
-                    timestamp: Date.now(),
-                    message: 'Primary Gemini Service re-initialized with updated API Key/Model.',
-                    level: 'info',
-                });
-                primaryModelInitialized = true;
-            } catch (initError) {
-                 console.error('Failed to re-initialize primary Gemini Service after settings save:', initError);
-                 event.sender.send(ipcChannels.TRANSLATION_LOG_MESSAGE, {
-                    timestamp: Date.now(),
-                    message: `Failed to re-initialize primary Gemini Service: ${initError.message}`,
-                    level: 'error',
-                });
-            }
-        } else {
-            console.warn('Primary Gemini model name not configured. Primary model not re-initialized.');
-        }
+    
+    // Re-initialize the provider with the new settings
+    await modelProvider.reinitializeProvider();
+    event.sender.send(ipcChannels.TRANSLATION_LOG_MESSAGE, {
+        timestamp: Date.now(),
+        message: `Model provider switched to ${settingsToSave.modelProvider} and re-initialized.`,
+        level: 'info',
+    });
 
-        if (settingsToSave.strongerRetryModelName && settingsToSave.strongerRetryModelName.trim() !== '') {
-            try {
-                geminiService.initializeGeminiModel(settingsToSave.apiKey, settingsToSave.strongerRetryModelName, 'retry');
-                console.log('Stronger retry Gemini Service re-initialized due to settings change.');
-                 event.sender.send(ipcChannels.TRANSLATION_LOG_MESSAGE, {
-                    timestamp: Date.now(),
-                    message: 'Stronger retry Gemini Service re-initialized.',
-                    level: 'info',
-                });
-                retryModelInitialized = true;
-            } catch (initError) {
-                console.error('Failed to re-initialize stronger retry Gemini Service after settings save:', initError);
-                event.sender.send(ipcChannels.TRANSLATION_LOG_MESSAGE, {
-                    timestamp: Date.now(),
-                    message: `Failed to re-initialize stronger retry Gemini Service: ${initError.message}`,
-                    level: 'error',
-                });
-            }
-        } else {
-            console.warn('Stronger retry model name not configured. Retry model not re-initialized (or cleared if it was set before).');
-            // Optionally, explicitly de-initialize or clear the 'retry' model instance if it was previously set and now the name is empty
-            // geminiService.clearModelInstance('retry'); // Hypothetical function
-        }
-    } else {
-        console.warn('API key not configured. Gemini models not re-initialized.');
-    }
     // Update GFC with new settings
     if (globalFileAdmissionController) {
         globalFileAdmissionController.updateSettings(settingsToSave);
@@ -1846,22 +1762,18 @@ class VideoProcessingCoordinator extends EventEmitter {
     async start() {
         this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `Video processing batch started for ${this.initialVideoFiles.length} files.`, level: 'info' });
         
-        // Initialize Gemini if needed
-        if (!geminiService.isInitialized()) {
+        // Initialize model provider if needed
+        if (!await modelProvider.isInitialized()) {
             try {
-                if (this.allSettings.apiKey && this.allSettings.geminiModel) {
-                    geminiService.initializeGeminiModel(this.allSettings.apiKey, this.allSettings.geminiModel);
-                    this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: 'Gemini Service initialized for video batch.', level: 'info' });
-                } else {
-                    throw new Error('API Key or Model for Gemini is not configured in settings.');
-                }
+                await modelProvider.reinitializeProvider();
+                this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: 'Model provider initialized for video batch.', level: 'info' });
             } catch (initError) {
-                this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `Cannot start video batch: Gemini Service error. ${initError.message}`, level: 'error' });
+                this.sendIpcMessage(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `Cannot start video batch: Model provider error. ${initError.message}`, level: 'error' });
                 this.initialVideoFiles.forEach(filePath => {
                     const tempJobId = `video-init-fail-${uuidv4()}`;
-                     this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath, jobId: tempJobId, status: 'Error', error: 'Gemini Service initialization failed.', type: 'video', phaseCompleted: 'full_pipeline' });
+                     this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath, jobId: tempJobId, status: 'Error', error: 'Model provider initialization failed.', type: 'video', phaseCompleted: 'full_pipeline' });
                 });
-                return; // Stop if Gemini can't be initialized
+                return; // Stop if provider can't be initialized
             }
         }
         this.transcriptionManager.resetCancellation();
@@ -2091,20 +2003,15 @@ ipcMain.on(ipcChannels.START_SRT_BATCH_PROCESSING_REQUEST, async (event, { srtFi
     }
     globalFileAdmissionController.resetSrtCancellation(); // Reset for new SRT batch
 
-    if (!geminiService.isInitialized()) {
+    if (!await modelProvider.isInitialized()) {
         try {
-            // Use allSettings passed from renderer, which should be current
-            if (allSettings.apiKey && allSettings.geminiModel) {
-                geminiService.initializeGeminiModel(allSettings.apiKey, allSettings.geminiModel);
-                event.sender.send(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: 'Gemini Service initialized for SRT batch.', level: 'info' });
-            } else {
-                throw new Error('API Key or Model is not configured in provided settings.');
-            }
+            await modelProvider.reinitializeProvider();
+            event.sender.send(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: 'Model provider initialized for SRT batch.', level: 'info' });
         } catch (initError) {
-            console.error('Gemini service init failed for SRT batch:', initError);
-            event.sender.send(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `Cannot start SRT batch: Gemini Service error. ${initError.message}`, level: 'error' });
+            console.error('Model provider init failed for SRT batch:', initError);
+            event.sender.send(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: `Cannot start SRT batch: Model provider error. ${initError.message}`, level: 'error' });
             srtFilePaths.forEach(fp => {
-                event.sender.send(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: fp, jobId: `srt-init-fail-${uuidv4()}`, status: 'Error', error: 'Gemini Service initialization failed.', type: 'srt' });
+                event.sender.send(ipcChannels.TRANSLATION_FILE_COMPLETED, { filePath: fp, jobId: `srt-init-fail-${uuidv4()}`, status: 'Error', error: 'Model provider initialization failed.', type: 'srt' });
             });
             return;
         }

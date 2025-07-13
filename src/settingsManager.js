@@ -12,6 +12,10 @@ const settingsFilePath = path.join(userDataPath, 'settings.json');
 // as ensureDataDirectory will now use userDataPath.
 
 const defaultSettings = {
+  // Provider Settings
+  modelProvider: 'gemini', // 'gemini' or 'deepseek'
+  deepseekApiKey: '',
+
   // Core Gemini API Settings
   apiKey: '',
   geminiModel: 'gemini-2.5-flash-preview-05-20',

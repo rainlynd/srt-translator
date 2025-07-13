@@ -64,11 +64,19 @@ const globalRecursiveSelectionCheckbox = document.getElementById('global-recursi
 const logArea = document.getElementById('log-area');
 
 // Settings Tab
+const modelProviderSelect = document.getElementById('model-provider-select');
 const apiKeyInput = document.getElementById('api-key');
+const deepseekApiKeyInput = document.getElementById('deepseek-api-key');
+const geminiApiKeyGroup = document.getElementById('gemini-api-key-group');
+const deepseekApiKeyGroup = document.getElementById('deepseek-api-key-group');
+const geminiModelGroup = document.getElementById('gemini-model-group');
+const geminiStrongerModelGroup = document.getElementById('gemini-stronger-model-group');
+const deepseekModelGroup = document.getElementById('deepseek-model-group');
 const geminiModelSelect = document.getElementById('gemini-model-select');
 const geminiModelCustomInput = document.getElementById('gemini-model-custom');
 const strongerGeminiModelSelect = document.getElementById('stronger-gemini-model-select'); // Added
 const strongerGeminiModelCustomInput = document.getElementById('stronger-gemini-model-custom'); // Added
+const deepseekModelSelect = document.getElementById('deepseek-model-select');
 const systemPromptInput = document.getElementById('system-prompt');
 const temperatureInput = document.getElementById('temperature');
 const topPInput = document.getElementById('top-p');
@@ -1342,6 +1350,10 @@ saveSettingsButton.addEventListener('click', () => {
 
 
     const settingsToSave = {
+        // Provider Settings
+        modelProvider: modelProviderSelect.value,
+        deepseekApiKey: deepseekApiKeyInput.value,
+
         // Global Language Settings
         targetLanguage: globalTargetLanguageInput.value,
         transcriptionSourceLanguage: globalSourceLanguageSelect.value === "" ? null : globalSourceLanguageSelect.value,
@@ -1401,6 +1413,12 @@ loadDefaultsButton.addEventListener('click', () => {
 
 function loadSettingsIntoForm(settings) {
     if (!settings) settings = currentSettings; // Use cached if no specific one passed
+
+    // Load Provider Settings
+    modelProviderSelect.value = settings.modelProvider || 'gemini';
+    deepseekApiKeyInput.value = settings.deepseekApiKey || '';
+    toggleProviderSettings(modelProviderSelect.value);
+
 
     // Load Global Language Settings
     populateLanguageDropdown(globalTargetLanguageInput, targetLanguagesWithNone, settings.targetLanguage || 'en');
@@ -1565,7 +1583,27 @@ if (window.electronAPI && window.electronAPI.onSelectDirectoryResponse) {
 
 
 // --- Initial Load ---
+function toggleProviderSettings(provider) {
+    if (provider === 'gemini') {
+        geminiApiKeyGroup.style.display = 'block';
+        geminiModelGroup.style.display = 'block';
+        geminiStrongerModelGroup.style.display = 'block';
+        deepseekApiKeyGroup.style.display = 'none';
+        deepseekModelGroup.style.display = 'none';
+    } else if (provider === 'deepseek') {
+        geminiApiKeyGroup.style.display = 'none';
+        geminiModelGroup.style.display = 'none';
+        geminiStrongerModelGroup.style.display = 'none';
+        deepseekApiKeyGroup.style.display = 'block';
+        deepseekModelGroup.style.display = 'block';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    modelProviderSelect.addEventListener('change', (event) => {
+        toggleProviderSettings(event.target.value);
+    });
+
     // Request initial settings load when the renderer is ready
     if (window.electronAPI && window.electronAPI.sendLoadSettingsRequest) {
         window.electronAPI.sendLoadSettingsRequest();

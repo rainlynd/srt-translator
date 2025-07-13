@@ -1,7 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const srtParser = require('./srtParser');
-const geminiService = require('./geminiService');
+const modelProvider = require('./modelProvider');
 
 let cancelCurrentTranslation = false;
 // Store job-specific cancellation flags if needed, for now, global flag is primary
@@ -79,7 +79,7 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
     if (gfc) { // Only estimate if GFC is present
       try {
         // modelAliasToUse will be determined inside the retry loop, default to 'primary' for initial estimation
-        estimatedInputTokensForGFC = await geminiService.estimateInputTokensForTranslation(
+        estimatedInputTokensForGFC = await modelProvider.estimateInputTokensForTranslation(
           originalTextsForApi,
           targetLanguage,
           effectiveSystemPrompt, // Use system prompt with summary
@@ -118,13 +118,13 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
             let modelAliasToUse = 'primary';
             let effectiveThinkingBudget = uiControlledThinkingBudget; // Default to UI-controlled value
  
-            if (chunkAttempt > 3 && strongerRetryModelName && strongerRetryModelName.trim() !== '') {
+            if (settings.modelProvider === 'deepseek') {
+                modelAliasToUse = 'primary'; // DeepSeek uses the same model for retries
+            } else if (chunkAttempt > 3 && strongerRetryModelName && strongerRetryModelName.trim() !== '') {
                 modelAliasToUse = 'retry';
                 effectiveThinkingBudget = -1; // Override since stronger model cannot disable thinking
-                // modelNameToLog = strongerRetryModelName; // For logging if needed
                 logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Attempt ${chunkAttempt}: Switching to Gemini PRO model ('${strongerRetryModelName}') for retry. Setting thinkingBudget to -1.`, 'debug');
             } else if (chunkAttempt > 3) { // Stronger model desired but not configured
-                // Stronger model desired but not configured, primary model continues with its thinkingBudget
                 logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Attempt ${chunkAttempt}: Would switch to stronger model, but no strongerRetryModelName configured. Using primary model ('${geminiModel}'). Thinking budget from UI: ${effectiveThinkingBudget}.`, 'warn');
             } else {
                 // Primary model attempt, use UI controlled thinking budget
@@ -137,7 +137,7 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
             // If switching, the actual call will use the 'retry' model.
             // If GFC needs precise tokens for the *actual* model being used *before* the call, this needs more complex logic.
 
-            const geminiResult = await geminiService.translateChunk(
+            const geminiResult = await modelProvider.translateChunk(
                 originalTextsForApi, // Already prepared
                 targetLanguage,
                 effectiveSystemPrompt, // Use system prompt with summary
