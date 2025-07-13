@@ -1,9 +1,0 @@
-git+https://github.com/rainlynd/whisperX.git@main#egg=whisperx
-funasr
-nltk
-pyannote.audio
-torch
-torchaudio
-tokenizers>=0.21,<0.22
-numpy>=2.0.2
-pandas>=2.2.3

@@ -33,64 +33,22 @@ def milliseconds_to_srt_time_format(milliseconds: int) -> str:
    return f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d},{int(ms):03d}"
 
 def get_ffmpeg_path():
-    """Determines the path to the ffmpeg executable."""
+    """Determines the path to the ffmpeg executable by checking the system PATH."""
     ffmpeg_exe_name = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
-
-    # Path 1: Relative to the script, assuming Electron Forge structure
-    # Script is typically in '.../resources/app(.asar.unpacked)/src/python/' or '.../resources/python/'
-    # FFmpeg is typically in '.../resources/ffmpeg/'
-    try:
-        # __file__ is the path to the current script (video_to_srt.py)
-        script_path = os.path.abspath(__file__)
-        script_dir = os.path.dirname(script_path) # e.g., .../resources/python
-
-        # Go up one level from script_dir to get to the parent 'resources' (or equivalent) directory
-        parent_of_script_dir = os.path.dirname(script_dir)
-
-        # Path A: '.../resources/ffmpeg/ffmpeg.exe'
-        ffmpeg_path_electron = os.path.join(parent_of_script_dir, 'ffmpeg', ffmpeg_exe_name)
-        if os.path.exists(ffmpeg_path_electron):
-            return ffmpeg_path_electron
-        
-        # Path B: If script is in '.../resources/app/python' and ffmpeg in '.../resources/ffmpeg'
-        # then parent_of_script_dir is '.../resources/app', its parent is '.../resources'
-        resources_dir_candidate = os.path.dirname(parent_of_script_dir)
-        ffmpeg_path_electron_alt = os.path.join(resources_dir_candidate, 'ffmpeg', ffmpeg_exe_name)
-        if os.path.exists(ffmpeg_path_electron_alt):
-            return ffmpeg_path_electron_alt
-
-    except Exception: # pylint: disable=broad-except
-        # This might happen if __file__ is not defined as expected (e.g. in some frozen contexts not via PyInstaller)
-        pass # Continue to other checks
-
-    # Path 2: Development mode (script run directly from project_root/src/python)
-    # ffmpeg is in project_root/ffmpeg/
-    try:
-        script_dir_dev = os.path.dirname(os.path.abspath(__file__)) # project_root/src/python
-        # project_root is two levels up from src/python
-        project_root_dev = os.path.abspath(os.path.join(script_dir_dev, '..', '..'))
-        
-        dev_path_ffmpeg_subdir = os.path.join(project_root_dev, 'ffmpeg', ffmpeg_exe_name)
-        if os.path.exists(dev_path_ffmpeg_subdir):
-            return dev_path_ffmpeg_subdir
-    except Exception: # pylint: disable=broad-except
-        pass
-
-    # Path 3: Check system PATH (last resort)
+    
     ffmpeg_in_path = shutil.which(ffmpeg_exe_name)
     if ffmpeg_in_path:
         return ffmpeg_in_path
 
     raise FileNotFoundError(
-        f"ffmpeg ('{ffmpeg_exe_name}') not found. Please ensure ffmpeg is in your system PATH, "
-        f"or bundled correctly with the Electron Forge application (e.g., in 'resources/ffmpeg/'), "
-        f"or in the project root 'ffmpeg/' directory for development."
+        f"ffmpeg ('{ffmpeg_exe_name}') not found. Please ensure ffmpeg is installed and in your system PATH."
     )
 
 def extract_audio_from_video(video_input_path, target_audio_path, ffmpeg_executable_path):
     """Extracts audio from video using ffmpeg."""
     command = [
         ffmpeg_executable_path,
+        '-threads', '12',
         '-i', video_input_path,
         '-vn',  # Disable video recording
         '-acodec', 'pcm_s16le',  # Audio codec: PCM signed 16-bit little-endian

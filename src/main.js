@@ -290,8 +290,12 @@ class GlobalFileAdmissionController extends EventEmitter {
                 type: getIpcTypeFromJobType(job.type)
             };
 
-            if (job.type === 'video_summarization_phase' && finalStatus === 'Success') {
-                ipcPayload.phaseCompleted = 'summarization';
+            if (finalStatus === 'Success') {
+                if (job.type === 'video_summarization_phase' || job.type === 'srt_summarization_phase') {
+                    ipcPayload.phaseCompleted = 'summarization';
+                } else if (job.type === 'srt' || job.type === 'video_translation_phase') {
+                    ipcPayload.phaseCompleted = 'full_pipeline';
+                }
             }
 
             this.sendIpcMessage(ipcChannels.TRANSLATION_FILE_COMPLETED, ipcPayload);

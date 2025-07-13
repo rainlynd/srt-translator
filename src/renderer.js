@@ -795,15 +795,15 @@ if (window.electronAPI && window.electronAPI.onTranslationFileCompleted) {
         if (fileToUpdate) {
             const logMessagePrefix = isVideoJob ? `Video processing for ${fileToUpdate.name} (Job: ${data.jobId})` : `SRT Translation for ${fileToUpdate.name} (Job: ${data.jobId})`;
 
-            // For video, only set final "Success" if phaseCompleted is 'full_pipeline'
-            if (isVideoJob && data.status === 'Success' && data.phaseCompleted !== 'full_pipeline') {
+            // For video and SRT, only set final "Success" if phaseCompleted is 'full_pipeline'
+            if ((isVideoJob || isSrtJob) && data.status === 'Success' && data.phaseCompleted !== 'full_pipeline') {
                 // This is an intermediate success (e.g., summarization complete)
                 // Update status to reflect waiting for the next phase, but don't mark as final success.
                 // The progress update from main.js should provide the next status.
                 // For now, we can log it and ensure the UI doesn't show "Success" prematurely.
                 fileToUpdate.status = `Phase '${data.phaseCompleted}' OK, awaiting next...`; // Or a more generic "Processing..."
                 // Keep progress as is, or main.js progress update will set it.
-                // Do not set fileToUpdate.progress = 1 here for intermediate video phases.
+                // Do not set fileToUpdate.progress = 1 here for intermediate phases.
                 appendToLog(`${logMessagePrefix} - intermediate phase '${data.phaseCompleted}' completed. Output: ${data.outputPath || 'N/A'}`, 'info', true);
             } else {
                 // This is a final state (Success with full_pipeline, Error, Cancelled, or SRT success)

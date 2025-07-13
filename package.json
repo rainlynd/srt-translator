@@ -10,7 +10,7 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\"",
-    "setup:python_env": "bash -c \"set -e; if [ ! -f .venv/Scripts/activate ]; then echo 'Virtual environment not found, creating...'; python -m venv .venv; fi; source .venv/Scripts/activate; python -m pip install --upgrade pip; python -m pip install -r requirements_dev.txt; deactivate\"",
+    "setup:python_env": "bash -c \"set -e; if [ ! -f .venv/Scripts/activate ]; then echo 'Virtual environment not found, creating...'; python -m venv .venv; fi; source .venv/Scripts/activate; python -m pip install --upgrade pip; python -m pip install -r requirements.txt; deactivate\"",
     "dev": "npm run setup:python_env && npm run start"
   },
   "keywords": [],

@@ -94,7 +94,7 @@ SRT Translator is an Electron-based desktop application designed for transcribin
     ```bash
     npm run setup:python_env
     ```
-    This script creates a `.venv` and installs packages from [`requirements_dev.txt`](requirements_dev.txt:1).
+    This script creates a `.venv` and installs packages from [`requirements.txt`](requirements.txt:1).
 5.  Ensure FFmpeg is installed and accessible in your system PATH.
 6.  **API Key Configuration:**
     *   Run the application once (`npm run dev`).

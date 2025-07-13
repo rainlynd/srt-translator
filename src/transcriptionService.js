@@ -10,11 +10,13 @@ const { app } = require('electron'); // Import app
 let PYTHON_EXECUTABLE;
 let SCRIPT_PATH;
 if (app.isPackaged) {
-  // In packaged app, 'python' directory is at the root of resourcesPath due to extraResource config
+  // In packaged app, resources are at the root of process.resourcesPath
   SCRIPT_PATH = path.join(process.resourcesPath, 'python', 'video_to_srt.py');
-  // For packaged app, PYTHON_EXECUTABLE will depend on whether Python is bundled or expected globally.
-  // For now, assume global if not bundled as part of a more complex Python distribution plan.
-  PYTHON_EXECUTABLE = process.platform === 'win32' ? 'python.exe' : 'python3';
+  
+  // Point to the bundled Python executable within the .venv directory
+  PYTHON_EXECUTABLE = process.platform === 'win32'
+    ? path.join(process.resourcesPath, '.venv', 'Scripts', 'python.exe')
+    : path.join(process.resourcesPath, '.venv', 'bin', 'python');
 } else {
   // In development, construct path relative to the project root
   SCRIPT_PATH = path.join(app.getAppPath(), 'src', 'python', 'video_to_srt.py');
