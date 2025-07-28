@@ -7,9 +7,15 @@ import subprocess
 import tempfile
 import shutil # Added for shutil.which
 import torch # Added for device check
+import gc
+import resource
 import whisperx
 import io # Added for StringIO
 from funasr import AutoModel
+
+memory_limit_gb = 24
+soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+resource.setrlimit(resource.RLIMIT_AS, (memory_limit_gb * 1024**3, hard))
 
 # Keep str_to_bool and format_timestamp as they are useful
 def str_to_bool(value):
@@ -48,7 +54,7 @@ def extract_audio_from_video(video_input_path, target_audio_path, ffmpeg_executa
     """Extracts audio from video using ffmpeg."""
     command = [
         ffmpeg_executable_path,
-        '-threads', '12',
+        '-threads', '8',
         '-i', video_input_path,
         '-vn',  # Disable video recording
         '-acodec', 'pcm_s16le',  # Audio codec: PCM signed 16-bit little-endian
@@ -162,7 +168,7 @@ def _process_funasr_segments(funasr_output_list, diarization_enabled, enable_seg
     return {
         "transcription_result": {
             "segments": output_segments_for_schema,
-            "language": "zh" # Assuming Chinese for FunASR as per plan
+            "language": "zh"
         },
         "speaker_mapping": segment_speaker_mapping
     }
@@ -170,14 +176,13 @@ def _process_funasr_segments(funasr_output_list, diarization_enabled, enable_seg
 def main():
     parser = argparse.ArgumentParser(description="Transcribe video to SRT using WhisperX.")
     parser.add_argument("video_file_path", help="Absolute path to the video file.")
-    # Removed --model_path
     parser.add_argument("--output_srt_path", help="Optional: File path to write SRT output. Prints to stdout if not given.", default=None)
     
     parser.add_argument("--language", type=str, default=None, help="Source language code (e.g., 'en', 'es'). If None, language is auto-detected by WhisperX.")
     parser.add_argument("--compute_type", type=str, default="float16", help="Compute type for the model (e.g., 'float32', 'int8', 'float16', 'int8_float16'). Default: float16")
     
     # New arguments for WhisperX
-    parser.add_argument("--batch_size", default=16, type=int, help="the preferred batch size for inference")
+    parser.add_argument("--batch_size", default=4, type=int, help="the preferred batch size for inference")
     parser.add_argument("--enable_diarization", type=str_to_bool, nargs='?', const=True, default=False, help="Enable speaker diarization (1-2 speakers). Requires --hf_token.")
     parser.add_argument("--hf_token", type=str, default=None, help="Hugging Face token, required if --enable_diarization is True.")
     parser.add_argument("--condition_on_previous_text", action="store_true", help="Enable conditioning on previous text during transcription.")
@@ -191,8 +196,6 @@ def main():
     parser.add_argument("--enable_segment_merging", action="store_true", default=True, help="Enable sentence segment merging for FunASR output.")
     parser.add_argument("--max_merge_gap_ms", type=int, default=2000, help="Maximum silence duration (ms) between segments to allow merging (FunASR only). Default: 500")
     parser.add_argument("--max_merged_segment_duration_ms", type=int, default=10000, help="Maximum total duration (ms) of a merged segment (FunASR only). Default: 10000")
-    
-    # Removed VAD, (old)cpu_threads, num_workers arguments as WhisperX handles them differently or internally
 
     args = parser.parse_args()
 
@@ -252,17 +255,59 @@ def main():
                 print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 30, 'status': f'FunASR model loaded on {device}.'})}", file=sys.stdout, flush=True)
 
                 print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 35, 'status': 'FunASR transcribing...'})}", file=sys.stdout, flush=True)
-                funasr_results = funasr_pipeline.generate(
-                    input=temp_audio_file_path,
-                    pred_timestamp=True,
-                    sentence_timestamp=True,
-                    merge_vad=True,
-                    merge_length_s=10,
-                    return_spk_res=True # Get FunASR spk if available (though will be overridden by WhisperX diarization if enabled)
-                )
+                try:
+                    funasr_results = funasr_pipeline.generate(
+                        input=temp_audio_file_path,
+                        pred_timestamp=True,
+                        sentence_timestamp=True,
+                        merge_vad=True,
+                        merge_length_s=10,
+                        return_spk_res=True # Get FunASR spk if available (though will be overridden by WhisperX diarization if enabled)
+                    )
+                except Exception as funasr_transcribe_error:
+                    if "out of memory" in str(funasr_transcribe_error).lower() and device == "cuda":
+                        print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': 'FunASR: GPU out of memory during transcription. Retrying on CPU...'})}", file=sys.stdout, flush=True)
+                        
+                        # Clean up GPU resources
+                        del funasr_pipeline
+                        gc.collect()
+                        torch.cuda.empty_cache()
+
+                        # Reload model on CPU and retry
+                        cpu_device = "cpu"
+                        if args.threads > 0:
+                            torch.set_num_threads(args.threads)
+                        
+                        funasr_pipeline = AutoModel(
+                            model="paraformer-zh",
+                            vad_model="fsmn-vad",
+                            punc_model="ct-punc",
+                            spk_model="cam++",
+                            ncpu=args.threads,
+                            device=cpu_device,
+                            vad_kwargs={"max_single_segment_time": 10000},
+                        )
+                        print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 45, 'status': 'FunASR model re-loaded on CPU. Retrying transcription...'})}", file=sys.stdout, flush=True)
+                        funasr_results = funasr_pipeline.generate(
+                            input=temp_audio_file_path,
+                            pred_timestamp=True,
+                            sentence_timestamp=True,
+                            merge_vad=True,
+                            merge_length_s=10,
+                            return_spk_res=True
+                        )
+                    else:
+                        # Re-raise other transcription errors
+                        raise funasr_transcribe_error
                 detected_language = 'zh'
                 print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 65, 'status': 'FunASR transcription complete.', 'detected_language': 'zh'})}", file=sys.stdout, flush=True)
                 
+                # Cleanup FunASR model to free VRAM
+                del funasr_pipeline
+                gc.collect()
+                if device == "cuda":
+                    torch.cuda.empty_cache()
+
                 funasr_processed_output_dict = _process_funasr_segments(
                     funasr_results,
                     args.enable_diarization,
@@ -279,24 +324,54 @@ def main():
                     full_srt_output = ""
                 else:
                     print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 70, 'status': 'FunASR: Aligning segments with WhisperX...'})}", file=sys.stdout, flush=True)
-                    model_a, metadata_a = whisperx.load_align_model(language_code=language_code_for_alignment, device=device)
-                    aligned_funasr_result = whisperx.align(segments_for_alignment, model_a, metadata_a, audio, device, return_char_alignments=False)
-                    print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 75, 'status': 'FunASR: WhisperX alignment complete.'})}", file=sys.stdout, flush=True)
+                    
+                    aligned_funasr_result = None # Initialize before try block
+                    model_a, metadata_a = None, None # Ensure they are defined for the finally block
+                    try:
+                        model_a, metadata_a = whisperx.load_align_model(language_code=language_code_for_alignment, device=device)
+                        aligned_funasr_result = whisperx.align(segments_for_alignment, model_a, metadata_a, audio, device, return_char_alignments=False)
+                        print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 75, 'status': 'FunASR: WhisperX alignment complete.'})}", file=sys.stdout, flush=True)
+                    except Exception as align_error:
+                        # If alignment fails for any reason, log a warning and proceed with unaligned segments.
+                        print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': f'FunASR: Alignment failed: {str(align_error)}. Proceeding with unaligned segments.'})}", file=sys.stdout, flush=True)
+                        # aligned_funasr_result remains None
+                    finally:
+                        # Cleanup alignment model
+                        if model_a:
+                            del model_a
+                        if 'metadata_a' in locals() and metadata_a:
+                            del metadata_a
+                        gc.collect()
+                        if device == "cuda":
+                            torch.cuda.empty_cache()
 
-                    result_to_use_for_srt = aligned_funasr_result # Default to aligned result
+                    # If alignment was successful, proceed with diarization if enabled.
+                    # Otherwise, use the unaligned segments.
+                    if aligned_funasr_result:
+                        result_to_use_for_srt = aligned_funasr_result
 
-                    if args.enable_diarization and args.hf_token:
-                        print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 80, 'status': 'FunASR: Performing WhisperX diarization...'})}", file=sys.stdout, flush=True)
-                        try:
-                            diarize_model = whisperx.diarize.DiarizationPipeline(use_auth_token=args.hf_token, device=device)
-                            # Using min_speakers=1, max_speakers=2 as a default, can be made configurable if needed
-                            diarize_segments_funasr = diarize_model(audio, min_speakers=1, max_speakers=2)
-                            result_to_use_for_srt = whisperx.assign_word_speakers(diarize_segments_funasr, aligned_funasr_result)
-                            print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 85, 'status': 'FunASR: WhisperX diarization complete.'})}", file=sys.stdout, flush=True)
-                        except Exception as diarization_error_funasr:
-                            print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'progress': 83, 'status': f'FunASR: WhisperX diarization failed: {str(diarization_error_funasr)}. Proceeding without speaker labels.'})}", file=sys.stdout, flush=True)
-                    elif args.enable_diarization and not args.hf_token:
-                        print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'progress': 80, 'status': 'FunASR: Diarization enabled for FunASR path but Hugging Face token not provided. Skipping WhisperX diarization.'})}", file=sys.stdout, flush=True)
+                        if args.enable_diarization and args.hf_token:
+                            print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 80, 'status': 'FunASR: Performing WhisperX diarization...'})}", file=sys.stdout, flush=True)
+                            diarize_model = None
+                            try:
+                                diarize_model = whisperx.diarize.DiarizationPipeline(use_auth_token=args.hf_token, device=device)
+                                diarize_segments_funasr = diarize_model(audio, min_speakers=1, max_speakers=2)
+                                result_to_use_for_srt = whisperx.assign_word_speakers(diarize_segments_funasr, aligned_funasr_result)
+                                print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 85, 'status': 'FunASR: WhisperX diarization complete.'})}", file=sys.stdout, flush=True)
+                            except Exception as diarization_error_funasr:
+                                print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'progress': 83, 'status': f'FunASR: WhisperX diarization failed: {str(diarization_error_funasr)}. Proceeding without speaker labels.'})}", file=sys.stdout, flush=True)
+                            finally:
+                                # Cleanup diarization model
+                                if diarize_model:
+                                    del diarize_model
+                                    gc.collect()
+                                    if device == "cuda":
+                                        torch.cuda.empty_cache()
+                        elif args.enable_diarization and not args.hf_token:
+                            print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'progress': 80, 'status': 'FunASR: Diarization enabled but Hugging Face token not provided. Skipping WhisperX diarization.'})}", file=sys.stdout, flush=True)
+                    else:
+                        # Alignment failed, use the original unaligned segments
+                        result_to_use_for_srt = {"segments": segments_for_alignment}
                     
                     # Ensure language key is present for SRT writer
                     if "language" not in result_to_use_for_srt or not result_to_use_for_srt.get("language"):
@@ -326,8 +401,18 @@ def main():
                 except Exception as e_cache:
                     print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': f'Failed to create/access model cache path {args.model_cache_path}: {str(e_cache)}. Using default.'})}", file=sys.stdout, flush=True)
 
+            # Determine model based on language
+            model_name = "large-v3-turbo" # Default model
+            if args.language:
+                lang_lower = args.language.lower()
+                if lang_lower == 'ja':
+                    model_name = "RoachLin/kotoba-whisper-v2.2-faster"
+                elif lang_lower == 'ko':
+                    model_name = "arc-r/faster-whisper-large-v2-Ko"
+            
+            print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'status': f'Loading WhisperX model: {model_name}'})}", file=sys.stdout, flush=True)
             model = whisperx.load_model(
-                "large-v3-turbo", # Consider making model name an arg
+                model_name,
                 device,
                 compute_type=args.compute_type,
                 language=args.language, # WhisperX handles None for auto-detection
@@ -343,47 +428,76 @@ def main():
             detected_language = result["language"] # Update detected_language
             print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 60, 'status': 'WhisperX transcription complete.', 'detected_language': detected_language, 'duration_seconds': audio.shape[0] / whisperx.audio.SAMPLE_RATE})}", file=sys.stdout, flush=True)
 
-            # 4. Align
-            model_a, metadata = whisperx.load_align_model(language_code=detected_language, device=device)
-            aligned_result = whisperx.align(result["segments"], model_a, metadata, audio, device, return_char_alignments=False)
-            print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 75, 'status': 'WhisperX alignment complete.'})}", file=sys.stdout, flush=True)
+            # Cleanup transcription model
+            del model
+            gc.collect()
+            if device == "cuda":
+                torch.cuda.empty_cache()
 
-            # 5. Speak Diarization
-            # For WhisperX, hf_token is required for diarization
-            if not args.hf_token:
-                print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'progress': 80, 'status': 'WhisperX Diarization enabled but Hugging Face token not provided. Skipping diarization.'})}", file=sys.stdout, flush=True)
-            else:
-                try:
-                    print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 80, 'status': 'WhisperX starting diarization...'})}", file=sys.stdout, flush=True)
-                    diarize_model = whisperx.diarize.DiarizationPipeline(use_auth_token=args.hf_token, device=device)
-                    if args.enable_diarization:
-                        diarize_segments = diarize_model(audio, min_speakers=1, max_speakers=2)
-                    else:
-                        diarize_segments = diarize_model(audio)
-                    result_diarized = whisperx.assign_word_speakers(diarize_segments, aligned_result)
-                    print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 90, 'status': 'WhisperX diarization complete.'})}", file=sys.stdout, flush=True)
-                except Exception as diarization_error:
-                    print(f"PROGRESS_JSON:{json.dumps({'type': 'error', 'progress': 85, 'status': f'WhisperX diarization failed: {str(diarization_error)}. Proceeding without speaker labels.'})}", file=sys.stdout, flush=True)
-            
-            # Generate SRT from WhisperX segments using whisperx.utils.WriteSRT
-            print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 90, 'status': 'Generating SRT content using WhisperX writer...'})}", file=sys.stdout, flush=True)
+            # 4. Align
+            aligned_result = None # Initialize before try block
+            model_a, metadata = None, None # Ensure they are defined for the finally block
+            try:
+                model_a, metadata = whisperx.load_align_model(language_code=detected_language, device=device)
+                aligned_result = whisperx.align(result["segments"], model_a, metadata, audio, device, return_char_alignments=False)
+                print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 75, 'status': 'WhisperX alignment complete.'})}", file=sys.stdout, flush=True)
+            except Exception as align_error:
+                print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': f'WhisperX: Alignment failed: {str(align_error)}. Proceeding with unaligned segments.'})}", file=sys.stdout, flush=True)
+                # aligned_result remains None
+            finally:
+                # Cleanup alignment model
+                if model_a:
+                    del model_a
+                if 'metadata' in locals() and metadata:
+                    del metadata
+                gc.collect()
+                if device == "cuda":
+                    torch.cuda.empty_cache()
+
+            # 5. Diarization (only if alignment succeeded)
+            result_diarized = None
+            if aligned_result:
+                if args.enable_diarization and args.hf_token:
+                    diarize_model = None
+                    try:
+                        print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 80, 'status': 'WhisperX starting diarization...'})}", file=sys.stdout, flush=True)
+                        diarize_model = whisperx.diarize.DiarizationPipeline(use_auth_token=args.hf_token, device=device)
+                        diarize_segments = diarize_model(audio) # Default behavior
+                        if args.enable_diarization: # This check is a bit redundant but keeps logic clear
+                            diarize_segments = diarize_model(audio, min_speakers=1, max_speakers=2)
+                        
+                        result_diarized = whisperx.assign_word_speakers(diarize_segments, aligned_result)
+                        print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 90, 'status': 'WhisperX diarization complete.'})}", file=sys.stdout, flush=True)
+                    except Exception as diarization_error:
+                        print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'progress': 85, 'status': f'WhisperX diarization failed: {str(diarization_error)}. Proceeding without speaker labels.'})}", file=sys.stdout, flush=True)
+                        # result_diarized remains None
+                    finally:
+                        # Cleanup diarization model
+                        if diarize_model:
+                            del diarize_model
+                            gc.collect()
+                            if device == "cuda":
+                                torch.cuda.empty_cache()
+                elif args.enable_diarization and not args.hf_token:
+                     print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'progress': 80, 'status': 'WhisperX Diarization enabled but Hugging Face token not provided. Skipping diarization.'})}", file=sys.stdout, flush=True)
             
             # 6. SRT writing
+            print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 90, 'status': 'Generating SRT content using WhisperX writer...'})}", file=sys.stdout, flush=True)
+            
             writer_options_dict = {
-                "max_line_width": None,  # Using WhisperX's default
+                "max_line_width": None,
                 "max_line_count": 1,
                 "highlight_words": args.highlight_words,
             }
 
             # Determine the correct result dictionary to use for the writer.
-            # 'aligned_result' is the base dictionary from the alignment step.
-            # If diarization was enabled, attempted, and 'result_diarized' was created, use that.
-            if args.enable_diarization and args.hf_token and 'result_diarized' in locals():
-                # This assumes 'result_diarized' is populated if diarization was successful.
+            if result_diarized:
                 result_to_use_for_srt = result_diarized
-            else:
-                # Fallback to aligned_result if diarization was not enabled, or if it was attempted but 'result_diarized' wasn't set.
+            elif aligned_result:
                 result_to_use_for_srt = aligned_result
+            else:
+                # Fallback to the original unaligned transcription result
+                result_to_use_for_srt = result
             
             # Ensure the result_to_use_for_srt has the 'language' key.
             if "language" not in result_to_use_for_srt or not result_to_use_for_srt.get("language"):

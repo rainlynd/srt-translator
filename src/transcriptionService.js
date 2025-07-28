@@ -79,7 +79,6 @@ async function startVideoToSrtTranscription(jobId, videoPath, outputSrtPath, set
             // Python script will use default if --model_cache_path is not provided or if it fails to use the provided one.
         }
         
-        // Add arguments from settings object based on the new plan
         if (settings) {
             // settings.language is from globalSettings.transcriptionSourceLanguage (via transcriptionSettings in main.js)
             // If null/empty, WhisperX auto-detects.
@@ -109,8 +108,6 @@ async function startVideoToSrtTranscription(jobId, videoPath, outputSrtPath, set
             if (settings.threads && typeof settings.threads === 'number' && settings.threads > 0) {
                 pythonArgs.push('--threads', settings.threads.toString());
             }
-            // Temperature is hardcoded in the Python script, so no argument for it here.
-            // Removed VAD, (old)cpu_threads, num_workers
         }
 
         // Debug print for the Python script command and arguments
@@ -121,6 +118,10 @@ async function startVideoToSrtTranscription(jobId, videoPath, outputSrtPath, set
         logCallback('info', `Spawning Python script: ${PYTHON_EXECUTABLE} ${pythonArgs.join(' ')}`);
 
         const pythonProcess = spawn(PYTHON_EXECUTABLE, pythonArgs, {
+            env: {
+                ...process.env,
+                'PYTORCH_HIP_ALLOC_CONF': 'expandable_segments:True'
+            }
         });
 
         activeProcesses.set(jobId, pythonProcess);

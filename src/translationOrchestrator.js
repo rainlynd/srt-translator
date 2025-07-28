@@ -4,7 +4,6 @@ const srtParser = require('./srtParser');
 const modelProvider = require('./modelProvider');
 
 let cancelCurrentTranslation = false;
-// Store job-specific cancellation flags if needed, for now, global flag is primary
 
 /**
  * Logs an error message to a dedicated log file for a given input SRT file.
@@ -135,12 +134,6 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
                 // Primary model attempt, use UI controlled thinking budget
                 logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Attempt ${chunkAttempt}: Using primary model ('${geminiModel}'). Thinking budget from UI: ${effectiveThinkingBudget}.`, 'debug');
             }
- 
-            // Re-estimate tokens if switching model, only if GFC is active and it's not the first attempt (where it was already estimated)
-            // This is a simplified approach; a more complex GFC might need re-requesting resources.
-            // For now, we assume the initial estimation for 'primary' is sufficient for GFC's initial gatekeeping.
-            // If switching, the actual call will use the 'retry' model.
-            // If GFC needs precise tokens for the *actual* model being used *before* the call, this needs more complex logic.
 
             const geminiResult = await modelProvider.translateChunk(
                 originalTextsForApi, // Already prepared
@@ -258,18 +251,15 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
  * @returns {Promise<{status: string, outputPath?: string, error?: string}>}
  */
 async function processSRTFile(identifier, srtContent, targetLanguage, sourceLanguageCodeForSkipLogic, sourceLanguageNameForPrompt, settings, progressCallback, logCallback, jobId = null, gfc = null, summaryContent = "") {
-  // Reset global cancel flag. If using per-job flags, this would be more specific.
-  // For now, each call to processSRTFile is a "new batch" in terms of cancellation.
-  // If jobId is present and we want per-job cancellation, we'd initialize jobCancellationFlags.set(jobId, false);
   cancelCurrentTranslation = false;
 
   let previousSuccessfullyProcessedChunkLastThreeLines = null; // Variable to store context
 
-  const { entriesPerChunk } = settings; // Removed outputDirectory, translationRetries
-    const maxConcurrentChunks = 9999; // Set to a small fixed number as per plan (e.g., 3)
+  const { entriesPerChunk } = settings;
+    const maxConcurrentChunks = 9999;
   
     const identifierForLogging = path.basename(identifier); // Use identifier for logging
-    logCallback(Date.now(), `Starting processing for: ${identifierForLogging} (Job ID: ${jobId}). Source for prompt: '${sourceLanguageNameForPrompt || 'Unknown/Not Specified'}', Source for skip: '${sourceLanguageCodeForSkipLogic || 'Unknown/Not Specified'}', Target: '${targetLanguage}'. Max concurrent chunks (local orchestrator): ${maxConcurrentChunks}. GFC managed: ${!!gfc}`, 'info');
+    logCallback(Date.now(), `Starting processing for: ${identifierForLogging} (Job ID: ${jobId}). Source for prompt: '${sourceLanguageNameForPrompt || 'Unknown/Not Specified'}', Source for skip: '${sourceLanguageCodeForSkipLogic || 'Unknown/Not Specified'}', Target: '${targetLanguage}'. Max concurrent chunks (local orchestrator): ${maxConcurrentChunks}. GFC managed: ${!!gfc}. File-level concurrency: ${settings.enableFileLevelConcurrency ? 'Enabled' : 'Disabled'}`, 'info');
 
     // --- START LANGUAGE CHECK ---
     // Ensure sourceLanguageCodeForSkipLogic is a non-empty string for the check to be effective.
@@ -333,8 +323,6 @@ async function processSRTFile(identifier, srtContent, targetLanguage, sourceLang
         const emptyParseError = 'Empty or unparsable SRT data';
         logCallback(Date.now(), `SRT data for ${identifierForLogging} (Job ID: ${jobId}) is empty or could not be parsed.`, 'error');
         progressCallback(identifier, 1, `Error: ${emptyParseError}`);
-        // logErrorToFile expects a file path. If identifier is not a file path (e.g. video path), this might need adjustment
-        // or we skip file logging if it's pure content processing. For now, assume identifier can be used.
         return { status: 'Error', error: emptyParseError };
       }
     } catch (error) {
@@ -348,7 +336,7 @@ async function processSRTFile(identifier, srtContent, targetLanguage, sourceLang
     logCallback(Date.now(), `SRT data for ${identifierForLogging} (Job ID: ${jobId}) split into ${chunks.length} chunks.`, 'info');
     progressCallback(identifier, 0, `Split into ${chunks.length} chunks.`);
   
-    // File attempt loop and fileAttempt variable removed
+
       if (cancelCurrentTranslation) { // Check global flag (and potentially jobCancellationFlags.get(jobId))
         logCallback(Date.now(), `Translation cancelled for ${identifierForLogging} (Job ID: ${jobId}, File attempt ${fileAttempt + 1}).`, 'warn');
         progressCallback(identifier, 1, 'Cancelled');
