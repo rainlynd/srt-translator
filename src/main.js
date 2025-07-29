@@ -872,7 +872,7 @@ Your goal is to read and understand the subtitles inside <summarize_request> sec
 
 ## Restriction
 1. Each terms must be unique and not overlapping
-2. You can extract up to 30 terms/names
+2. You can extract up to 50 terms/names
 
 ## Input format
 <summarize_request>

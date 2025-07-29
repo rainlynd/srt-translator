@@ -420,7 +420,7 @@ async function summarizeAndExtractTermsChunk(
     console.debug(`[Gemini Summarize Request] Model Alias: ${modelAlias}`);
     console.debug(`[Gemini Summarize Request] System Prompt (Unchanged by this function):\n${summarySystemPrompt}`);
 
-    const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 30 important names/terminologies in {lang}.\n\n";
+    const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 50 important names/terminologies in {lang}.\n\n";
     const formattedReminderMessage = reminderMessageTemplate.replace(/{lang}/g, targetLanguageFullName || "the target language"); // Fallback if targetLanguageFullName is not provided
     const wrappedTextChunk = `<summarize_request>\n${textChunk}\n</summarize_request>`;
     const finalUserPromptContent = formattedReminderMessage + wrappedTextChunk;

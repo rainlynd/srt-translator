@@ -326,8 +326,16 @@ def main():
                 except Exception as e_cache:
                     print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': f'Failed to create/access model cache path {args.model_cache_path}: {str(e_cache)}. Using default.'})}", file=sys.stdout, flush=True)
 
+            # Determine model based on language
+            model_name = "large-v3" # Default model
+            if args.language:
+                if args.language.lower() == 'ja':
+                    model_name = "kotoba-tech/kotoba-whisper-v2.0-faster"
+                elif args.language.lower() == 'ko':
+                    model_name = "arc-r/faster-whisper-large-v2-Ko"
+
             model = whisperx.load_model(
-                "large-v3-turbo", # Consider making model name an arg
+                model_name,
                 device,
                 compute_type=args.compute_type,
                 language=args.language, # WhisperX handles None for auto-detection

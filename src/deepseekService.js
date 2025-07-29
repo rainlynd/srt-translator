@@ -134,7 +134,7 @@ async function summarizeAndExtractTermsChunk(textChunk, summarySystemPrompt, gem
         return { summaryResponse: { theme: "", terms: [] }, actualInputTokens: 0, outputTokens: 0 };
     }
 
-    const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 30 important names/terminologies in {lang}.\n\n";
+    const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 50 important names/terminologies in {lang}.\n\n";
     const formattedReminderMessage = reminderMessageTemplate.replace(/{lang}/g, targetLanguageFullName || "the target language");
     const wrappedTextChunk = `<summarize_request>\n${textChunk}\n</summarize_request>`;
     const finalUserPromptContent = formattedReminderMessage + wrappedTextChunk;
