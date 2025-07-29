@@ -196,8 +196,6 @@ button {
     font-weight: 600;
     margin-right: 10px;
     transition: background-color var(--transition-speed) ease, transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
-    /* text-transform: uppercase; Removed for a softer look */
-    /* letter-spacing: 0.5px; Removed */
     box-shadow: 0 2px 5px rgba(0,0,0,0.15); /* Adjusted shadow */
 }
 
@@ -490,11 +488,6 @@ main.tabs-area {
     align-items: center;
     margin-top: 10px; /* Adjust as needed */
 }
-.checkbox-group input[type="checkbox"] {
-    /* Specific adjustments for checkbox within a group if needed, */
-    /* but general styles should cover it. Margin-right is already on the input. */
-    /* Ensure 'top' value aligns well with label text */
-}
 .checkbox-group label {
     margin-bottom: 0; /* Override default label margin */
     font-weight: normal; /* Less emphasis for checkbox label */
@@ -613,11 +606,4 @@ button.button-hold-active::before {
         border-color: rgba(46, 134, 171, 0.3);
         box-shadow: 0 0 5px rgba(46, 134, 171, 0.2);
     }
-}
-
-/* Ensure the text remains centered and readable */
-#start-srt-processing-button.button-hold-active {
-    /* Specific overrides if the countdown text needs different styling */
-    /* For example, if the text gets too long and needs smaller font temporarily */
-    /* font-size: 0.9em; */ /* Uncomment and adjust if needed */
 }

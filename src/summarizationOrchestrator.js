@@ -7,7 +7,7 @@ const summarizationHelper = require('./summarizationHelper');
 const modelProvider = require('./modelProvider'); // To access countTokens and summarizeAndExtractTermsChunk
 const { getSettings } = require('./settingsManager'); // To get default settings
 
-const DEFAULT_MAX_TOKENS_PER_SUMMARY_CHUNK = 10000; // As per plan
+const DEFAULT_MAX_TOKENS_PER_SUMMARY_CHUNK = 10000;
 const DEFAULT_MODEL_ALIAS_FOR_SUMMARIZATION = 'primary'; // Or make configurable
 
 /**
@@ -49,52 +49,33 @@ async function processSrtForSummarization(jobDetails) {
       return { status: 'Cancelled', error: 'Operation cancelled' };
     }
 
-    progressCallback(jobId, 0, 'Parsing SRT content...');
-    const srtEntries = parseSRT(srtContent);
-    if (!srtEntries || srtEntries.length === 0) {
-      logCallback(jobId, 'No valid SRT entries found.', 'warn');
-      return { status: 'Success', summaryContent: "" }; // Or 'Error' if this is unexpected
-    }
-    const fullText = combineSrtText(srtEntries); // Using combineSrtText from srtUtils
-    if (!fullText.trim()) {
-        logCallback(jobId, 'SRT content is empty after parsing.', 'warn');
-        return { status: 'Success', summaryContent: "" };
-    }
-
-    progressCallback(jobId, 5, 'Chunking text for summarization...');
-    // Determine language code for sentence splitting (simple mapping for now)
-    // This might need a more robust mapping based on sourceLanguageFullName
-    let languageCodeForChunking = 'default';
-    if (sourceLanguageFullName.toLowerCase().includes('chinese')) languageCodeForChunking = 'chinese';
-    else if (sourceLanguageFullName.toLowerCase().includes('japanese')) languageCodeForChunking = 'japanese';
-    else if (sourceLanguageFullName.toLowerCase().includes('korean')) languageCodeForChunking = 'korean';
-    else if (sourceLanguageFullName.toLowerCase().includes('english')) languageCodeForChunking = 'english';
-
-    // Calculate maxCharsPerChunk based on settings
-    const avgCharsPerToken = settings.avgCharsPerTokenForSummarization || 3.5;
-    const maxTokensTarget = settings.maxTokensPerSummaryChunk || DEFAULT_MAX_TOKENS_PER_SUMMARY_CHUNK;
-    const maxCharsPerChunk = Math.floor(maxTokensTarget * avgCharsPerToken);
-    logCallback(jobId, `Chunking by character count. Target tokens: ${maxTokensTarget}, Avg chars/token: ${avgCharsPerToken}, Max chars/chunk: ${maxCharsPerChunk}`, 'debug');
-
-    // Use the new character-based chunking function
-    // Note: chunkTextByCharCount is synchronous as it doesn't call the token estimator API.
-    const textChunks = summarizationHelper.chunkTextByCharCount(
-      fullText,
-      maxCharsPerChunk,
-      languageCodeForChunking
-    );
-
-    if (!textChunks || textChunks.length === 0) {
-      logCallback(jobId, 'No text chunks generated for summarization.', 'warn');
-      return { status: 'Success', summaryContent: "" };
-    }
-
-    logCallback(jobId, `Text chunked into ${textChunks.length} parts for summarization.`, 'info');
-
+    
+        progressCallback(jobId, 0, 'Parsing SRT content...');
+        const srtEntries = parseSRT(srtContent);
+        if (!srtEntries || srtEntries.length === 0) {
+          logCallback(jobId, 'No valid SRT entries found.', 'warn');
+          return { status: 'Success', summaryContent: "" }; // Or 'Error' if this is unexpected
+        }
+        if (srtEntries.length === 0 || srtEntries.every(entry => !entry.text.trim())) {
+            logCallback(jobId, 'SRT content is empty after parsing.', 'warn');
+            return { status: 'Success', summaryContent: "" };
+        }
+    
+        progressCallback(jobId, 5, 'Chunking entries for summarization...');
+        // Use entry-based chunking instead of character-based chunking
+        const entriesPerChunk = settings.summarizationEntriesPerChunk || 400;
+        const entryChunks = summarizationHelper.chunkEntriesByCount(srtEntries, entriesPerChunk);
+    
+        if (!entryChunks || entryChunks.length === 0) {
+          logCallback(jobId, 'No entry chunks generated for summarization.', 'warn');
+          return { status: 'Success', summaryContent: "" };
+        }
+    
+        logCallback(jobId, `Entries chunked into ${entryChunks.length} parts for summarization.`, 'info');
     let accumulatedSummary = { theme: "", terms: [] };
     let existingTermsString = ""; // To pass to formatSummaryPrompt
 
-    const totalChunks = textChunks.length;
+    const totalChunks = entryChunks.length;
     for (let i = 0; i < totalChunks; i++) {
       if (abortSignal?.aborted) {
         logCallback(jobId, `Summarization cancelled during chunk ${i + 1}/${totalChunks}.`, 'warn');
@@ -104,7 +85,8 @@ async function processSrtForSummarization(jobDetails) {
       const chunkProgress = 10 + Math.floor((i / totalChunks) * 80); // Progress from 10% to 90%
       progressCallback(jobId, chunkProgress, `Summarizing chunk ${i + 1} of ${totalChunks}...`);
 
-      const textChunk = textChunks[i];
+      // Convert entry chunk to text for summarization
+      const textChunk = entryChunks[i].map(entry => entry.text).join(' ');
       const currentSummarySystemPrompt = summarizationHelper.formatSummaryPrompt(
         baseSummaryPrompt,
         sourceLanguageFullName,
@@ -202,8 +184,6 @@ async function processSrtForSummarization(jobDetails) {
       if (lastError) {
         // All attempts failed for this chunk
         logCallback(jobId, `All ${maxAttempts} attempts failed for chunk ${i + 1}. Proceeding without summary for this chunk. Error: ${lastError.message}`, 'error');
-        // Optionally, decide if the whole process should fail or continue
-        // For now, let's continue and the final summary will be partial.
       }
     } // End chunk loop
 

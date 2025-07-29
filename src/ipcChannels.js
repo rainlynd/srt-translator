@@ -17,6 +17,8 @@ module.exports = {
   SELECT_VIDEO_FILES_RESPONSE: 'select-video-files-response', // payload: { filePaths: string[] } or { error: string }
   SELECT_VIDEO_DIRECTORY_REQUEST: 'select-video-directory-request',   // NEW
   SELECT_VIDEO_DIRECTORY_RESPONSE: 'select-video-directory-response', // NEW
+  LOAD_VIDEO_PATHS_FROM_FILE_REQUEST: 'load-video-paths-from-file-request',
+  LOAD_VIDEO_PATHS_FROM_FILE_RESPONSE: 'load-video-paths-from-file-response',
   START_VIDEO_QUEUE_PROCESSING_REQUEST: 'start-video-queue-processing-request', // payload: { videoQueue: object[], globalSettings: object, allSettings: object }
   CANCEL_VIDEO_QUEUE_PROCESSING_REQUEST: 'cancel-video-queue-processing-request', // payload: { jobId?: string } (current video job)
 
@@ -25,7 +27,6 @@ module.exports = {
   TRANSLATION_PROGRESS_UPDATE: 'translation-progress-update', // payload: { filePath: string, jobId: string, progress: number, status: string, stage?: 'transcribing'|'translating', chunkInfo?: string, type?: 'video'|'srt' }
   TRANSLATION_LOG_MESSAGE: 'translation-log-message', // payload: { timestamp: number, message: string, level: 'info'|'warn'|'error' }
   TRANSLATION_FILE_COMPLETED: 'translation-file-completed', // payload: { filePath: string, jobId: string, status: 'Success'|'Error'|'Cancelled', outputPath?: string, error?: string, type?: 'video'|'srt', phaseCompleted?: string } // Added phaseCompleted
-  // RETRY_FILE_REQUEST may need to be adapted or have new versions per tab if retry logic differs. For now, keep as is.
   RETRY_FILE_REQUEST: 'retry-file-request', // payload: { filePath: string, targetLanguage: string, settings: object, type: 'video'|'srt', jobIdToRetry?: string }
   
   // --- Settings Management (Remains Unchanged) ---

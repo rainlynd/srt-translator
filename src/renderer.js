@@ -96,9 +96,8 @@ const transcriptionComputeTypeSelect = document.getElementById('transcription-co
 const huggingFaceTokenInput = document.getElementById('huggingface-token'); // Added
 const transcriptionConditionOnPreviousTextCheckbox = document.getElementById('transcription-condition-on-previous-text'); // Added
 const transcriptionThreadsInput = document.getElementById('transcription-threads'); // Added
+const enableFileLevelConcurrencyCheckbox = document.getElementById('enable-file-level-concurrency'); // Added
 const saveSettingsButton = document.getElementById('save-settings-button'); // Added
-
-// Removed references to detailed transcription settings elements
 
 const settingsErrorDisplayDiv = document.createElement('div'); // For displaying settings-related errors
 settingsErrorDisplayDiv.id = 'settings-error-display';
@@ -202,9 +201,6 @@ function updateStartButtonStates() {
 
     if (targetLang && sourceLang && targetLang === sourceLang && sourceLang !== "") {
         disableDueToLanguageConflict = targetLang !== "none"; // Conflict only if targetLang is not "none"
-        // Optionally, display a persistent warning message
-        // For now, disabling buttons is the primary feedback.
-        // Consider adding a dedicated warning element in HTML if more prominent feedback is needed.
     } else {
     }
 
@@ -378,6 +374,19 @@ if (selectVideoFilesButton) {
     });
 }
 
+// Add event listener for the new "Load From File" button
+const loadVideoFilesFromListButton = document.getElementById('load-video-files-from-list-button');
+if (loadVideoFilesFromListButton) {
+    loadVideoFilesFromListButton.addEventListener('click', () => {
+        if (window.electronAPI && window.electronAPI.sendLoadVideoPathsFromFileRequest) {
+            window.electronAPI.sendLoadVideoPathsFromFileRequest();
+        } else {
+            appendToLog('Error: IPC for loading video paths from file not available.', 'error', true);
+            alert('Error: Loading video paths from file functionality is currently unavailable.');
+        }
+    });
+}
+
 if (startVideoProcessingButton) {
     startVideoProcessingButton.addEventListener('click', () => {
         if (selectedVideoFiles.length === 0) {
@@ -389,7 +398,6 @@ if (startVideoProcessingButton) {
             alert('Please select a target language in the Global Controls.');
             return;
         }
-         // Removed localModelPath check as WhisperX handles its own model management.
 
         // Prepare the queue with files that are not already successfully processed or currently processing.
         const videoQueue = selectedVideoFiles.filter(f => f.status !== 'Success' && f.status !== 'Processing');
@@ -429,7 +437,6 @@ if (startVideoProcessingButton) {
             startVideoProcessingButton.disabled = true;
             selectVideoFilesButton.disabled = true;
             cancelVideoProcessingButton.disabled = false;
-            // Disable SRT tab controls - REMOVED FOR CONCURRENCY
 
             appendToLog(`Video processing batch started for ${videoQueue.length} video(s).`, 'info', true);
         } else {
@@ -575,8 +582,6 @@ if (cancelSrtProcessingButton) {
         if (window.electronAPI && window.electronAPI.sendCancelSrtBatchProcessingRequest) {
             window.electronAPI.sendCancelSrtBatchProcessingRequest({}); // Send empty payload for now
             appendToLog('SRT batch translation cancellation request sent.', 'warn', true);
-            // UI will be updated via onTranslationFileCompleted events with 'Cancelled' status
-            // Buttons will be re-enabled by checkAllSrtFilesProcessed
         } else {
             appendToLog('Error: IPC for cancelling SRT batch processing not available.', 'error', true);
         }
@@ -594,8 +599,6 @@ if (window.electronAPI && window.electronAPI.onSelectSrtFilesResponse) {
             appendToLog(`Error selecting SRT files: ${response.error}`, 'error', true);
             alert(`Error selecting SRT files: ${response.error}`);
         } else if (response.filePaths && response.filePaths.length > 0) {
-            // Add to existing list, or replace if that's the desired behavior
-            // For now, let's replace:
             selectedSrtFiles = response.filePaths.map(fp => ({
                 path: fp,
                 name: fp.split(/[\\/]/).pop(),
@@ -690,6 +693,43 @@ if (window.electronAPI && window.electronAPI.onSelectSrtDirectoryResponse) {
             if (selectedSrtFiles.length === 0) {
                  appendToLog('No SRT files found in the selected directory or selection was cancelled.', 'info', true);
             }
+        }
+    });
+}
+
+// Handle "Load Video Paths From File" response
+if (window.electronAPI && window.electronAPI.onLoadVideoPathsFromFileResponse) {
+    window.electronAPI.onLoadVideoPathsFromFileResponse((event, response) => {
+        if (response.error) {
+            appendToLog(`Error loading video paths from file: ${response.error}`, 'error', true);
+            alert(`Error loading video paths from file: ${response.error}`);
+        } else if (response.filePaths && response.filePaths.length > 0) {
+            // Filter out duplicates by checking if the file path is already in selectedVideoFiles
+            const newFiles = response.filePaths.filter(filePath => {
+                return !selectedVideoFiles.some(existingFile => existingFile.path === filePath);
+            });
+            
+            if (newFiles.length > 0) {
+                // Add new files to the selectedVideoFiles array
+                const newFileObjects = newFiles.map(fp => ({
+                    path: fp,
+                    name: fp.split(/[\\/]/).pop(),
+                    status: 'Pending',
+                    progress: 0,
+                    type: 'video',
+                    stage: undefined,
+                    jobId: undefined
+                }));
+                
+                selectedVideoFiles = [...selectedVideoFiles, ...newFileObjects];
+                renderVideoFileList();
+                if (startVideoProcessingButton) startVideoProcessingButton.disabled = false;
+                appendToLog(`Loaded ${newFiles.length} new video file(s) from list.`, 'info', true);
+            } else {
+                appendToLog('No new video files were loaded from the file (all paths already selected).', 'info', true);
+            }
+        } else {
+            appendToLog('No video files were loaded from the file.', 'info', true);
         }
     });
 }
@@ -811,10 +851,6 @@ if (window.electronAPI && window.electronAPI.onTranslationFileCompleted) {
 
             // For video and SRT, only set final "Success" if phaseCompleted is 'full_pipeline'
             if ((isVideoJob || isSrtJob) && data.status === 'Success' && data.phaseCompleted !== 'full_pipeline') {
-                // This is an intermediate success (e.g., summarization complete)
-                // Update status to reflect waiting for the next phase, but don't mark as final success.
-                // The progress update from main.js should provide the next status.
-                // For now, we can log it and ensure the UI doesn't show "Success" prematurely.
                 fileToUpdate.status = `Phase '${data.phaseCompleted}' OK, awaiting next...`; // Or a more generic "Processing..."
                 // Keep progress as is, or main.js progress update will set it.
                 // Do not set fileToUpdate.progress = 1 here for intermediate phases.
@@ -884,7 +920,6 @@ function renderVideoFileList() {
             e.stopPropagation(); // Prevent any parent click listeners
             selectedVideoFiles.splice(index, 1); // Remove file from array
             renderVideoFileList(); // Re-render the list
-            // Potentially update button states if all files are removed or processing state changes
             checkAllVideoFilesProcessed();
         });
 
@@ -924,7 +959,6 @@ function renderVideoFileList() {
                 alert('Please select a target language before retrying.');
                 return;
             }
-            // Removed localModelPath check for retry
             if (window.electronAPI && window.electronAPI.sendRetryFileRequest) {
                 const retryJobId = `video-retry-${Date.now()}-${file.name}`;
                 file.jobId = retryJobId;
@@ -1400,7 +1434,6 @@ saveSettingsButton.addEventListener('click', () => {
         transcriptionSourceLanguage: globalSourceLanguageSelect.value === "" ? null : globalSourceLanguageSelect.value,
         enableDiarization: globalDiarizationCheckbox.checked,
         thinkingBudget: globalThinkingEnableCheckbox.checked ? -1 : 0, // Added
-        // enableVideoResegmentation: globalEnableResegmentationCheckbox.checked, // Removed
  
         // API & Translation Parameters
         apiKey: apiKeyInput.value,
@@ -1410,27 +1443,17 @@ saveSettingsButton.addEventListener('click', () => {
         temperature: validateNumericInput(temperatureInput, "Gemini Temperature", true, 0, 1),
         topP: validateNumericInput(topPInput, "Gemini Top P", true, 0, 1),
         entriesPerChunk: validateNumericInput(entriesPerChunkInput, "Entries per Chunk", false, 1),
-        // translationRetries: validateNumericInput(translationRetriesInput, "File Retries", false, 0), // REMOVED
         chunkRetries: validateNumericInput(chunkRetriesInput, "Chunk Retries", false, 0),
         rpm: validateNumericInput(rpmInput, "RPM", false, 1),
+
         
-        // File & Directory Settings
-        // outputDirectory: outputDirectoryInput.value.trim(), // REMOVED
-        // localModelPath: localModelPathInput.value.trim(), // Removed
-
-        // Simplified Transcription Settings
-        transcriptionComputeType: transcriptionComputeTypeSelect.value,
-        huggingFaceToken: huggingFaceTokenInput.value.trim(), // Added
-        transcriptionConditionOnPreviousText: transcriptionConditionOnPreviousTextCheckbox.checked, // Added
-        transcriptionThreads: validateNumericInput(transcriptionThreadsInput, "Transcription Threads", false, 1), // Added
-
-        // Removed:
-        // videoResegmentationTemp, videoResegmentationTopP
-        // transcriptionTemperature, transcriptionNoSpeechThreshold, transcriptionConditionOnPreviousText,
-        // transcriptionVadFilter, and all specific transcriptionVad... parameters
-        // transcriptionCpuThreads, transcriptionNumWorkers
-    };
-
+                // Simplified Transcription Settings
+                transcriptionComputeType: transcriptionComputeTypeSelect.value,
+                huggingFaceToken: huggingFaceTokenInput.value.trim(), // Added
+                transcriptionConditionOnPreviousText: transcriptionConditionOnPreviousTextCheckbox.checked, // Added
+                transcriptionThreads: validateNumericInput(transcriptionThreadsInput, "Transcription Threads", false, 1), // Added
+                enableFileLevelConcurrency: enableFileLevelConcurrencyCheckbox.checked, // Added
+            };
     if (!isValid) {
         // displaySettingsError is already called by validateNumericInput
         appendToLog('Settings validation failed. Please correct the highlighted fields.', 'error', true);
@@ -1544,17 +1567,15 @@ function loadSettingsIntoForm(settings) {
     temperatureInput.value = settings.temperature !== undefined ? settings.temperature : 0.5; // Gemini Temperature
     topPInput.value = settings.topP !== undefined ? settings.topP : 0.5; // Gemini Top P
     entriesPerChunkInput.value = settings.entriesPerChunk || 100;
-    // translationRetriesInput.value = settings.translationRetries !== undefined ? settings.translationRetries : 2; // REMOVED
     chunkRetriesInput.value = settings.chunkRetries !== undefined ? settings.chunkRetries : 2;
     rpmInput.value = settings.rpm || 1000;
-    // outputDirectoryInput.value = settings.outputDirectory || ''; // REMOVED
-    // localModelPathInput.value = settings.localModelPath || ''; // Removed
 
     // Load Simplified Transcription Settings
-    transcriptionComputeTypeSelect.value = settings.transcriptionComputeType || 'float16'; // Default to float16 as per plan
+    transcriptionComputeTypeSelect.value = settings.transcriptionComputeType || 'float16';
     huggingFaceTokenInput.value = settings.huggingFaceToken || ''; // Added
     transcriptionConditionOnPreviousTextCheckbox.checked = !!settings.transcriptionConditionOnPreviousText; // Added
     transcriptionThreadsInput.value = settings.transcriptionThreads || 8; // Added
+    enableFileLevelConcurrencyCheckbox.checked = !!settings.enableFileLevelConcurrency; // Added
 
     // Update UI based on loaded settings
     updateGlobalSourceLanguageDisabledState(); // Kept
@@ -1564,18 +1585,6 @@ function loadSettingsIntoForm(settings) {
 }
 
 function updateGlobalSourceLanguageDisabledState() {
-    // This function's logic might need review if diarization affects source language selection differently.
-    // For now, assuming the original logic for multilingual (which disabled source lang) is NOT what we want for diarization.
-    // Diarization should be possible even with a specified source language.
-    // If the 'globalMultilingualCheckbox' was the *only* controller of this, this function might be redundant
-    // or need to be re-evaluated based on how 'multilingual' (auto-detect) vs 'specific source lang' should interact.
-    // For now, let's keep the original logic tied to the old checkbox ID if it's still in HTML for some reason,
-    // or make it a no-op if that checkbox is truly gone.
-    // Safest: if the new diarization checkbox does NOT control this, then this function's trigger might change or be removed.
-    // Based on the plan, diarization checkbox should NOT disable source language.
-    // So, if globalMultilingualCheckbox is truly replaced, this function's current trigger is gone.
-    // Let's assume the `globalMultilingualCheckbox` element might still exist or this function is called elsewhere.
-    // The original request was to remove its call from the *new* diarization checkbox listener.
     const oldMultilingualCheckbox = document.getElementById('global-multilingual-transcription'); // Check for the old element
     if (oldMultilingualCheckbox && globalSourceLanguageSelect) {
         if (oldMultilingualCheckbox.checked) {
@@ -1646,10 +1655,6 @@ if (window.electronAPI && window.electronAPI.onSelectDirectoryResponse) {
         if (response.error) {
             appendToLog(`Error selecting directory for ${response.identifier}: ${response.error}`, 'error', true);
         } else if (response.path) {
-            // if (response.identifier === 'localModelPath') { // Removed
-            //     localModelPathInput.value = response.path;
-            //     appendToLog(`Local model path selected: ${response.path}`, 'info', true);
-            // } else
             if (response.identifier === 'outputDirectory') {
                 outputDirectoryInput.value = response.path;
                 appendToLog(`Output directory selected: ${response.path}`, 'info', true);
@@ -1757,9 +1762,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } // Added
         }); // Added
     } // Added
-
-    
-    // Removed event listeners for detailed transcription UI elements
 
     // Initial state updates based on defaults (will be overridden by loaded settings)
     updateGlobalSourceLanguageDisabledState(); // Kept

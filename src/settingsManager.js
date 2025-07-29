@@ -73,6 +73,7 @@ Below is an example for the output:
   rpm: 1000,
   tpmLimit: 1000000, // Tokens Per Minute limit for Gemini API
   tpmOutputEstimationFactor: 2.5, // New: Factor to estimate output tokens based on input tokens for TPM pre-deduction
+  summarizationEntriesPerChunk: 400, // New: Number of SRT entries per chunk for summarization
   
   // Transcription Settings (Simplified for WhisperX)
   transcriptionSourceLanguage: null, // null for "Auto-detect"
@@ -82,6 +83,7 @@ Below is an example for the output:
   transcriptionConditionOnPreviousText: false, // Default as per plan
   transcriptionThreads: 8, // Default as per plan
   thinkingBudget: 0, // Default to disabled
+  enableFileLevelConcurrency: true, // File-level concurrency toggle
 };
 
 /**

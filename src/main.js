@@ -46,10 +46,8 @@ const sourceLanguageDisplayMap = {
 };
 // --- End ISO Language List ---
 
-// --- New Concurrency Plan Implementation (Phase 1) ---
-
 class FileJob {
-    constructor(jobId, filePath, type, globalSettings, allSettings, srtContent = null, isManualRetry = false, summaryContent = "") { // Removed totalChunks, potentialApiRequestsPerChunk, Added summaryContent
+    constructor(jobId, filePath, type, globalSettings, allSettings, srtContent = null, isManualRetry = false, summaryContent = "") {
         this.jobId = jobId;
         this.filePath = filePath; // Original identifier
         this.type = type; // 'srt', 'video_translation_phase'
@@ -72,10 +70,9 @@ class GlobalFileAdmissionController extends EventEmitter {
         this.highPriorityQueue = []; // For manual retries
         this.normalPriorityQueue = []; // For regular jobs
         this.activeFileJobs = new Map(); // jobId -> FileJob for active jobs
-        // this.activeApiCallTokens = 0; // Removed for RPM Token Bucket
         this.apiCallRequestQueue = [];
         this.rpmLimit = this.settings.rpm || 1000;
-        this.maxActiveFilesProcessing = this.settings.maxActiveFilesProcessing || 9999;
+        this.maxActiveFilesProcessing = this.settings.enableFileLevelConcurrency ? (this.settings.maxActiveFilesProcessing || 9999) : 1;
         this.cancellationFlags = { srt: false, video: false }; // Tracks cancellation per job type
 
         // RPM Token Bucket Settings
@@ -101,7 +98,7 @@ class GlobalFileAdmissionController extends EventEmitter {
         this.settings = newSettings;
         const oldRpmLimit = this.rpmLimit;
         this.rpmLimit = this.settings.rpm || 1000;
-        this.maxActiveFilesProcessing = this.settings.maxActiveFilesProcessing || 9999;
+        this.maxActiveFilesProcessing = this.settings.enableFileLevelConcurrency ? (this.settings.maxActiveFilesProcessing || 9999) : 1;
         this.tpmLimit = this.settings.tpmLimit || 1000000; // Update TPM limit
         this.tpmOutputEstimationFactor = this.settings.tpmOutputEstimationFactor || 2.5; // Update factor
 
@@ -223,21 +220,6 @@ class GlobalFileAdmissionController extends EventEmitter {
     }
 
     _tryProcessNextJob() {
-        // Check both cancellation flags. If either is true, it might affect queue processing.
-        // However, individual jobs are added based on their specific flag.
-        // This method primarily decides if *any* job can be picked.
-        // The more specific check happens in addJob.
-        // For _tryProcessNextJob, if a specific type is cancelled, its jobs won't be in the queue for long
-        // or will be filtered out by the cancellation methods.
-        // So, a general check might not be needed here, or it should be nuanced.
-        // Let's assume for now that if a job is in the queue, its type's cancel flag was false when added.
-        // The original plan didn't specify changing this method's top-level cancel check.
-        // Re-evaluating: if e.g. SRTs are cancelled, we shouldn't try to process an SRT job from the queue.
-        // However, the cancellation methods should have already cleared them or marked them.
-        // Let's proceed without a top-level cancel check here, relying on queue management by cancel methods.
-        // If this.isGloballyCancelled was meant to stop all processing, then we need a similar check.
-        // The plan implies that jobs of a cancelled type are rejected/removed.
-
         let jobToProcess = null;
         let fromHighPriority = false;
 
@@ -453,12 +435,6 @@ class GlobalFileAdmissionController extends EventEmitter {
     resetSrtCancellation() {
         this.cancellationFlags.srt = false;
         console.log('GFC: SRT cancellation flag reset.');
-        // Resetting API queues and buckets on any type reset might be too broad if other type is active.
-        // Plan: "These will be called when a new batch of the respective type is started."
-        // This implies a full reset for that type's context.
-        // For shared resources like API queues, if we clear them, it affects all.
-        // Let's assume for now that starting a new batch implies a fresh start for API resources too.
-        // This matches the old global reset behavior.
         this._resetApiResourceState();
     }
 
@@ -585,11 +561,7 @@ class GlobalFileAdmissionController extends EventEmitter {
                 throw new Error(`Cancellation active for ${job.type} jobs, API resources rejected.`);
             }
         } else {
-            // If job not found, it might have been cancelled and removed from all queues/active list.
-            // Or it's a new job not yet fully registered. This path should ideally not be hit if job management is tight.
             console.warn(`GFC: Job ID ${jobId} not found in active or queued jobs during API resource request. Proceeding with caution.`);
-            // If we can't determine job type, we can't check specific flag. A general check might be too restrictive.
-            // For now, let it proceed if job not found, assuming it's a new job being processed.
         }
 
 
@@ -715,8 +687,6 @@ class GlobalFileAdmissionController extends EventEmitter {
         this.lastTokenRefillTimestamp = now; // Always update timestamp, even if no tokens added
     }
 }
-
-// --- End New Concurrency Plan Implementation ---
 
 let mainWindow;
 let globalFileAdmissionController; // Declare here
@@ -1024,6 +994,36 @@ ipcMain.on(ipcChannels.SELECT_VIDEO_DIRECTORY_REQUEST, async (event) => {
   }
 });
 
+ipcMain.on(ipcChannels.LOAD_VIDEO_PATHS_FROM_FILE_REQUEST, async (event) => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Text Files', extensions: ['txt', 'list'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+    });
+    
+    if (!result.canceled && result.filePaths.length > 0) {
+      const filePath = result.filePaths[0];
+      const fileContent = await fs.readFile(filePath, 'utf8');
+      
+      // Parse the content by splitting into lines, trimming each line, and filtering out empty lines
+      const filePaths = fileContent
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      
+      event.sender.send(ipcChannels.LOAD_VIDEO_PATHS_FROM_FILE_RESPONSE, { filePaths });
+    } else {
+      event.sender.send(ipcChannels.LOAD_VIDEO_PATHS_FROM_FILE_RESPONSE, { filePaths: [] });
+    }
+  } catch (error) {
+    console.error('Error loading video paths from file:', error);
+    event.sender.send(ipcChannels.LOAD_VIDEO_PATHS_FROM_FILE_RESPONSE, { error: error.message });
+  }
+});
+
 // Output Directory Selection
 ipcMain.on(ipcChannels.SELECT_OUTPUT_DIR_REQUEST, async (event) => {
   try {
@@ -1149,8 +1149,6 @@ let activeSrtProcessingJobs = new Set(); // Stores jobIds (e.g., filePath or uui
 let srtProcessingQueue = []; // Stores filePaths waiting to be processed if concurrency limit is hit
 let isSrtBatchCancelled = false; // Flag for batch cancellation
 
-// --- Video Processing Redesign (based on video_pipeline_redesign_plan.md) ---
-
 let videoProcessingCoordinatorInstance = null;
 
 class TranscriptionManager extends EventEmitter {
@@ -1217,13 +1215,9 @@ class TranscriptionManager extends EventEmitter {
                 transcriptionSettings.condition_on_previous_text = allSettings.transcriptionConditionOnPreviousText;
                 transcriptionSettings.threads = allSettings.transcriptionThreads;
             }
-            // For FunASR, specific model parameters like 'paraformer-zh', 'fsmn-vad' etc. are hardcoded in video_to_srt.py
-            // and not passed from here. `allSettings` might contain other general settings if needed by transcriptionService.
-            // We can also pass allSettings directly and let transcriptionService pick what it needs if that's cleaner.
-            // For now, being explicit with what's added.
 
             const transcriptionResult = await transcriptionService.startVideoToSrtTranscription(
-                jobId, filePath, outputSrtPathForService, transcriptionSettings, // modelPath removed
+                jobId, filePath, outputSrtPathForService, transcriptionSettings,
                 (progress) => { // Progress Callback
                     if (this.isCancelled && this.currentJob && this.currentJob.jobId === jobId) {
                         transcriptionService.cancelTranscription(jobId);
@@ -1244,7 +1238,6 @@ class TranscriptionManager extends EventEmitter {
                  throw new Error('Transcription cancelled by user.');
             }
 
-            // --- Plan Section III.A.1.d ---
             // transcriptionResult from the modified transcriptionService will now contain:
             // { srtFilePath: preTranslationSrtPath, srtContent: null, detectedLanguage, languageProbability }
             if (!transcriptionResult || !transcriptionResult.srtFilePath || transcriptionResult.srtFilePath !== preTranslationSrtPath) {
@@ -1307,7 +1300,6 @@ class TranscriptionManager extends EventEmitter {
     }
 }
 
-// Simplified TranslationManager as per new plan
 class SimplifiedTranslationManager {
     constructor(gfc, sendIpcMessageCallback) {
         this.gfc = gfc; // Reference to GlobalFileAdmissionController
@@ -1400,17 +1392,6 @@ class SimplifiedTranslationManager {
         if (this.activeOrchestratorJobs.has(jobIdToCancel)) {
             console.log(`SimplifiedTM: Received cancel for active job ${jobIdToCancel}. Signalling orchestrator.`);
             setTranslationCancellation(true, jobIdToCancel); // Signal orchestrator for this specific job
-            
-            // Orchestrator will eventually call its callbacks which lead to gfc.jobCompleted.
-            // To ensure GFC knows it's a cancellation, we can proactively tell GFC.
-            // However, the orchestrator's result.status should be 'Cancelled'.
-            // For now, let the orchestrator finish and report 'Cancelled'.
-            // If orchestrator doesn't handle the flag quickly, this might delay GFC update.
-            // Alternative:
-            // this.gfc.jobCompleted(jobIdToCancel, 'Cancelled', 'Cancelled by GFC signal.');
-            // this.activeOrchestratorJobs.delete(jobIdToCancel);
-            // This needs careful thought: if we tell GFC it's cancelled, but orchestrator still writes a file, it's inconsistent.
-            // Best is to rely on orchestrator respecting the flag and returning 'Cancelled'.
         } else {
             console.log(`SimplifiedTM: Received cancel for job ${jobIdToCancel}, but it's not actively tracked here (might be already finished or not started by this TM).`);
         }
@@ -1508,10 +1489,6 @@ class SummarizationJobManager {
         if (abortController) {
             console.log(`SummarizationJM: Received cancel for active job ${jobIdToCancel}. Aborting.`);
             abortController.abort(); // Signal the summarizationOrchestrator to cancel
-            // The orchestrator should then return with status 'Cancelled', which processFile will pass to gfc.jobCompleted.
-            // To be safe, we can also directly inform GFC, but it's better if orchestrator handles it.
-            // For now, rely on orchestrator's cancellation path.
-            // this.activeSummarizationJobs.delete(jobIdToCancel); // Defer deletion to finally block in processFile
         } else {
             console.log(`SummarizationJM: Received cancel for job ${jobIdToCancel}, but it's not actively tracked here.`);
         }
@@ -1824,8 +1801,6 @@ class VideoProcessingCoordinator extends EventEmitter {
 
         const originalStatus = jobData.status; // Store original status for decision making
 
-        // Allow retry from 'FailedTranscription', 'FailedTranslation', 'Error', 'Cancelled'.
-        // 'FailedResegmentation' is removed.
         if (originalStatus !== 'FailedTranscription' &&
             originalStatus !== 'FailedTranslation' &&
             originalStatus !== 'Error' &&
@@ -2164,22 +2139,8 @@ ipcMain.on(ipcChannels.CANCEL_SRT_BATCH_PROCESSING_REQUEST, (event) => {
   if (globalFileAdmissionController) {
       globalFileAdmissionController.cancelSrtJobs(); // This now handles 'srt' and 'srt_summarization_phase'
       event.sender.send(ipcChannels.TRANSLATION_LOG_MESSAGE, { timestamp: Date.now(), message: 'SRT batch cancellation initiated (including any summarization phases).', level: 'warn'});
-      
-      // Clean up any pending listeners or state for SRT batch summarization
-      // This is a bit broad; ideally, we'd find the specific listener if it was stored.
-      // For now, removing all listeners of this type if GFC allows multiple.
-      // If GFC only allows one, this is fine.
-      // The srtSummarizationCompleteListener itself tries to remove itself when done.
-      // This is a fallback.
       const listeners = globalFileAdmissionController.listeners('srtSummarizationPhaseComplete');
       listeners.forEach(listener => {
-          // We can't easily identify THE specific batch listener here without more complex tracking.
-          // For simplicity, if a cancel comes, we might remove all.
-          // Or, rely on the listener's self-removal.
-          // Let's assume the listener handles its own removal or the batch finishes.
-          // If we need to be more aggressive:
-          // globalFileAdmissionController.removeAllListeners('srtSummarizationPhaseComplete');
-          // console.log('[SRT Batch] Removed srtSummarizationPhaseComplete listeners due to batch cancellation.');
       });
       // pendingSrtSummaries map would be cleared as jobs get cancelled or complete with error.
 
@@ -2299,11 +2260,6 @@ ipcMain.on(ipcChannels.RETRY_FILE_REQUEST, async (event, { filePath, targetLangu
                         thinkingBudget: currentFullSettings.thinkingBudget
                     },
                     allSettings: currentFullSettings,
-                    // summaryContent: "..." // For retry, summarization would re-run if enabled. GFC addJob needs to accept summaryContent.
-                                            // The current addJob in GFC doesn't explicitly take summaryContent yet for SRT retries.
-                                            // This needs alignment or summarization needs to be part of the GFC job processing itself.
-                                            // For now, retry for SRT won't include pre-calculated summary; it will re-summarize if enabled.
-                                            // The summarization logic is now before GFC.addJob, so for retry, it would run again.
                 }, true); // isManualRetry = true
             }
         } catch (readError) {

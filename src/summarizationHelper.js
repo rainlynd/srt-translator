@@ -25,11 +25,6 @@ const SENTENCE_ENDINGS = {
  */
 function splitIntoSentences(text, languageCode = 'default') {
   const regex = SENTENCE_ENDINGS[languageCode.toLowerCase()] || SENTENCE_ENDINGS.default;
-  // Split by the punctuation, but keep the punctuation at the end of the sentence.
-  // This can be complex. A simpler approach is to add a delimiter, split, then re-add.
-  // Or, split and then map to re-add.
-  // For now, a simpler split and join approach for chunking:
-  // Find all matches, then slice the text based on match indices.
 
   if (!text) return [];
 
@@ -109,6 +104,7 @@ async function chunkTextForSummarization_OLD_TOKEN_BASED( // Renamed
 }
 
 
+
 /**
  * Chunks text for summarization based on character limits and sentence endings.
  *
@@ -166,6 +162,21 @@ function chunkTextByCharCount(fullText, maxCharsPerChunk, languageCode = 'defaul
 
 
 /**
+ * Chunks SRT entries for summarization based on entry count.
+ *
+ * @param {Array<object>} srtEntries An array of SRT entry objects.
+ * @param {number} entriesPerChunk The maximum number of entries allowed per chunk.
+ * @returns {Array<Array<object>>} An array of entry chunks.
+ */
+function chunkEntriesByCount(srtEntries, entriesPerChunk) {
+  const chunks = [];
+  for (let i = 0; i < srtEntries.length; i += entriesPerChunk) {
+    chunks.push(srtEntries.slice(i, i + entriesPerChunk));
+  }
+  return chunks;
+}
+
+/**
  * Formats the summary prompt by replacing placeholders.
  *
  * @param {string} baseSummaryPrompt The base prompt string (e.g., from a file or settings).
@@ -182,7 +193,6 @@ function formatSummaryPrompt(baseSummaryPrompt, srcLangFullName, tgtLangFullName
   prompt = prompt.replace(/{src_lang}/g, srcLangFullName);
   prompt = prompt.replace(/{tgt_lang}/g, tgtLangFullName);
 
-  // The plan mentions "{terms_note} equivalent".
   // If existingTermsString is empty, the note might be different or omitted.
   const termsNotePlaceholder = /{terms_note}/g;
   if (existingTermsString && existingTermsString.trim().length > 0) {
@@ -234,6 +244,7 @@ function formatSummaryOutputForTranslationPrompt(accumulatedSummary) {
 module.exports = {
   chunkTextForSummarization_OLD_TOKEN_BASED, // Keep old one for now, renamed
   chunkTextByCharCount, // Export new function
+  chunkEntriesByCount, // Export entry-based chunking function
   formatSummaryPrompt,
   formatSummaryOutputForTranslationPrompt,
   // Expose for potential testing or direct use if needed

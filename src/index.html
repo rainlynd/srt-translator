@@ -51,6 +51,7 @@
                 <h3>Process Video Files</h3>
                 <div class="action-button-group">
                     <button id="select-video-files-button">Select Video File(s)</button>
+                    <button id="load-video-files-from-list-button">Load From File</button>
                     <button id="start-video-processing-button" disabled>Start Queue</button>
                     <button id="cancel-video-processing-button" class="secondary" disabled>Cancel All</button>
                 </div>
@@ -162,10 +163,13 @@
                             </div>
                         </div>
                         <div class="settings-grid-col-2">
-                            <!-- File Retries UI Element Removed -->
                             <div class="form-group">
                                 <label for="chunk-retries">Chunk Retries (on failure):</label>
                                 <input type="number" id="chunk-retries" step="1" min="0">
+                            </div>
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="enable-file-level-concurrency">
+                                <label for="enable-file-level-concurrency">Enable file-level concurrency (process multiple files simultaneously)</label>
                             </div>
                         </div>
                     </fieldset>

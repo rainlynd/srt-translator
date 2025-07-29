@@ -1,7 +1,2 @@
 whisperx
 funasr
-modelscope
-transformers
-pyannote.audio
-torch
-torchaudio

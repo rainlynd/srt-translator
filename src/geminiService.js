@@ -374,8 +374,6 @@ async function summarizeAndExtractTermsChunk(
   }
   if (typeof textChunk !== 'string' || textChunk.trim() === '') {
     console.warn('summarizeAndExtractTermsChunk called with empty or invalid text chunk.');
-    // Consistent with how translateChunk handles empty input, though summarization might still want to run with just a system prompt.
-    // For now, let's require a textChunk. If system-prompt-only summarization is needed, this can be adjusted.
     return { summaryResponse: { theme: "", terms: [] }, actualInputTokens: 0, outputTokens: 0 };
   }
 
@@ -394,7 +392,7 @@ async function summarizeAndExtractTermsChunk(
             properties: {
               src: { type: "string" },
               tgt: { type: "string" },
-              note: { type: "string" } // Optional as per plan
+              note: { type: "string" }
             },
             propertyOrdering: ["src", "tgt", "note"],
             required: ["src", "tgt", "note"]
@@ -500,8 +498,6 @@ async function summarizeAndExtractTermsChunk(
   }
 }
 
-// Removed resegmentSRTChunk function as per plan.
-
 module.exports = {
   initializeGeminiModel,
   isInitialized,
@@ -509,5 +505,4 @@ module.exports = {
   estimateInputTokensForTranslation,
   countTokens, // Added
   summarizeAndExtractTermsChunk, // Added
-  // resegmentSRTChunk, // Removed export
 };
