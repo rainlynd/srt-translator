@@ -994,6 +994,36 @@ ipcMain.on(ipcChannels.SELECT_VIDEO_DIRECTORY_REQUEST, async (event) => {
   }
 });
 
+ipcMain.on(ipcChannels.LOAD_VIDEO_PATHS_FROM_FILE_REQUEST, async (event) => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Text Files', extensions: ['txt', 'list'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+    });
+    
+    if (!result.canceled && result.filePaths.length > 0) {
+      const filePath = result.filePaths[0];
+      const fileContent = await fs.readFile(filePath, 'utf8');
+      
+      // Parse the content by splitting into lines, trimming each line, and filtering out empty lines
+      const filePaths = fileContent
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      
+      event.sender.send(ipcChannels.LOAD_VIDEO_PATHS_FROM_FILE_RESPONSE, { filePaths });
+    } else {
+      event.sender.send(ipcChannels.LOAD_VIDEO_PATHS_FROM_FILE_RESPONSE, { filePaths: [] });
+    }
+  } catch (error) {
+    console.error('Error loading video paths from file:', error);
+    event.sender.send(ipcChannels.LOAD_VIDEO_PATHS_FROM_FILE_RESPONSE, { error: error.message });
+  }
+});
+
 // Output Directory Selection
 ipcMain.on(ipcChannels.SELECT_OUTPUT_DIR_REQUEST, async (event) => {
   try {

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   sendSelectVideoFilesRequest: () => ipcRenderer.send(ipcChannels.SELECT_VIDEO_FILES_REQUEST),
   sendSelectVideoDirectoryRequest: () => ipcRenderer.send(ipcChannels.SELECT_VIDEO_DIRECTORY_REQUEST), // NEW
+  sendLoadVideoPathsFromFileRequest: () => ipcRenderer.send(ipcChannels.LOAD_VIDEO_PATHS_FROM_FILE_REQUEST),
   sendStartVideoQueueProcessingRequest: (data) => ipcRenderer.send(ipcChannels.START_VIDEO_QUEUE_PROCESSING_REQUEST, data),
   sendCancelVideoQueueProcessingRequest: (data) => ipcRenderer.send(ipcChannels.CANCEL_VIDEO_QUEUE_PROCESSING_REQUEST, data),
   
@@ -28,6 +29,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSelectSrtDirectoryResponse: (callback) => ipcRenderer.on(ipcChannels.SELECT_SRT_DIRECTORY_RESPONSE, callback), // NEW
   onSelectVideoFilesResponse: (callback) => ipcRenderer.on(ipcChannels.SELECT_VIDEO_FILES_RESPONSE, callback),
   onSelectVideoDirectoryResponse: (callback) => ipcRenderer.on(ipcChannels.SELECT_VIDEO_DIRECTORY_RESPONSE, callback), // NEW
+  onLoadVideoPathsFromFileResponse: (callback) => ipcRenderer.on(ipcChannels.LOAD_VIDEO_PATHS_FROM_FILE_RESPONSE, callback),
 
   // Shared Response Handlers
   onTranslationProgressUpdate: (callback) => ipcRenderer.on(ipcChannels.TRANSLATION_PROGRESS_UPDATE, callback),

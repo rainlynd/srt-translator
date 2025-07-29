@@ -17,6 +17,8 @@ module.exports = {
   SELECT_VIDEO_FILES_RESPONSE: 'select-video-files-response', // payload: { filePaths: string[] } or { error: string }
   SELECT_VIDEO_DIRECTORY_REQUEST: 'select-video-directory-request',   // NEW
   SELECT_VIDEO_DIRECTORY_RESPONSE: 'select-video-directory-response', // NEW
+  LOAD_VIDEO_PATHS_FROM_FILE_REQUEST: 'load-video-paths-from-file-request',
+  LOAD_VIDEO_PATHS_FROM_FILE_RESPONSE: 'load-video-paths-from-file-response',
   START_VIDEO_QUEUE_PROCESSING_REQUEST: 'start-video-queue-processing-request', // payload: { videoQueue: object[], globalSettings: object, allSettings: object }
   CANCEL_VIDEO_QUEUE_PROCESSING_REQUEST: 'cancel-video-queue-processing-request', // payload: { jobId?: string } (current video job)
 

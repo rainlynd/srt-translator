@@ -374,6 +374,19 @@ if (selectVideoFilesButton) {
     });
 }
 
+// Add event listener for the new "Load From File" button
+const loadVideoFilesFromListButton = document.getElementById('load-video-files-from-list-button');
+if (loadVideoFilesFromListButton) {
+    loadVideoFilesFromListButton.addEventListener('click', () => {
+        if (window.electronAPI && window.electronAPI.sendLoadVideoPathsFromFileRequest) {
+            window.electronAPI.sendLoadVideoPathsFromFileRequest();
+        } else {
+            appendToLog('Error: IPC for loading video paths from file not available.', 'error', true);
+            alert('Error: Loading video paths from file functionality is currently unavailable.');
+        }
+    });
+}
+
 if (startVideoProcessingButton) {
     startVideoProcessingButton.addEventListener('click', () => {
         if (selectedVideoFiles.length === 0) {
@@ -680,6 +693,43 @@ if (window.electronAPI && window.electronAPI.onSelectSrtDirectoryResponse) {
             if (selectedSrtFiles.length === 0) {
                  appendToLog('No SRT files found in the selected directory or selection was cancelled.', 'info', true);
             }
+        }
+    });
+}
+
+// Handle "Load Video Paths From File" response
+if (window.electronAPI && window.electronAPI.onLoadVideoPathsFromFileResponse) {
+    window.electronAPI.onLoadVideoPathsFromFileResponse((event, response) => {
+        if (response.error) {
+            appendToLog(`Error loading video paths from file: ${response.error}`, 'error', true);
+            alert(`Error loading video paths from file: ${response.error}`);
+        } else if (response.filePaths && response.filePaths.length > 0) {
+            // Filter out duplicates by checking if the file path is already in selectedVideoFiles
+            const newFiles = response.filePaths.filter(filePath => {
+                return !selectedVideoFiles.some(existingFile => existingFile.path === filePath);
+            });
+            
+            if (newFiles.length > 0) {
+                // Add new files to the selectedVideoFiles array
+                const newFileObjects = newFiles.map(fp => ({
+                    path: fp,
+                    name: fp.split(/[\\/]/).pop(),
+                    status: 'Pending',
+                    progress: 0,
+                    type: 'video',
+                    stage: undefined,
+                    jobId: undefined
+                }));
+                
+                selectedVideoFiles = [...selectedVideoFiles, ...newFileObjects];
+                renderVideoFileList();
+                if (startVideoProcessingButton) startVideoProcessingButton.disabled = false;
+                appendToLog(`Loaded ${newFiles.length} new video file(s) from list.`, 'info', true);
+            } else {
+                appendToLog('No new video files were loaded from the file (all paths already selected).', 'info', true);
+            }
+        } else {
+            appendToLog('No video files were loaded from the file.', 'info', true);
         }
     });
 }

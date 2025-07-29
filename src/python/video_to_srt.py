@@ -29,14 +29,28 @@ def str_to_bool(value):
        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 def milliseconds_to_srt_time_format(milliseconds: int) -> str:
-   """Converts milliseconds to HH:MM:SS,mmm SRT time format."""
-   if not isinstance(milliseconds, (int, float)) or milliseconds < 0:
-       # Consider adding logging if a logger is set up in this script
-       return "00:00:00,000"
-   seconds, ms = divmod(int(milliseconds), 1000)
-   minutes, seconds = divmod(seconds, 60)
-   hours, minutes = divmod(minutes, 60)
-   return f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d},{int(ms):03d}"
+    """Converts milliseconds to HH:MM:SS,mmm SRT time format."""
+    if not isinstance(milliseconds, (int, float)) or milliseconds < 0:
+        # Consider adding logging if a logger is set up in this script
+        return "00:00:00,000"
+    seconds, ms = divmod(int(milliseconds), 1000)
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d},{int(ms):03d}"
+
+def cleanup_model(model, device: str):
+    """
+    Helper function to consolidate repeated garbage collection and model unloading logic.
+    
+    Args:
+        model: The model object to clean up
+        device: The device the model was running on ("cuda" or "cpu")
+    """
+    if model:
+        del model
+    gc.collect()
+    if device == "cuda":
+        torch.cuda.empty_cache()
 
 def get_ffmpeg_path():
     """Determines the path to the ffmpeg executable by checking the system PATH."""
@@ -269,9 +283,7 @@ def main():
                         print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': 'FunASR: GPU out of memory during transcription. Retrying on CPU...'})}", file=sys.stdout, flush=True)
                         
                         # Clean up GPU resources
-                        del funasr_pipeline
-                        gc.collect()
-                        torch.cuda.empty_cache()
+                        cleanup_model(funasr_pipeline, device)
 
                         # Reload model on CPU and retry
                         cpu_device = "cpu"
@@ -303,10 +315,7 @@ def main():
                 print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 65, 'status': 'FunASR transcription complete.', 'detected_language': 'zh'})}", file=sys.stdout, flush=True)
                 
                 # Cleanup FunASR model to free VRAM
-                del funasr_pipeline
-                gc.collect()
-                if device == "cuda":
-                    torch.cuda.empty_cache()
+                cleanup_model(funasr_pipeline, device)
 
                 funasr_processed_output_dict = _process_funasr_segments(
                     funasr_results,
@@ -337,8 +346,7 @@ def main():
                         # aligned_funasr_result remains None
                     finally:
                         # Cleanup alignment model
-                        if model_a:
-                            del model_a
+                        cleanup_model(model_a, device)
                         if 'metadata_a' in locals() and metadata_a:
                             del metadata_a
                         gc.collect()
@@ -362,11 +370,7 @@ def main():
                                 print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'progress': 83, 'status': f'FunASR: WhisperX diarization failed: {str(diarization_error_funasr)}. Proceeding without speaker labels.'})}", file=sys.stdout, flush=True)
                             finally:
                                 # Cleanup diarization model
-                                if diarize_model:
-                                    del diarize_model
-                                    gc.collect()
-                                    if device == "cuda":
-                                        torch.cuda.empty_cache()
+                                cleanup_model(diarize_model, device)
                         elif args.enable_diarization and not args.hf_token:
                             print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'progress': 80, 'status': 'FunASR: Diarization enabled but Hugging Face token not provided. Skipping WhisperX diarization.'})}", file=sys.stdout, flush=True)
                     else:
@@ -429,10 +433,7 @@ def main():
             print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 60, 'status': 'WhisperX transcription complete.', 'detected_language': detected_language, 'duration_seconds': audio.shape[0] / whisperx.audio.SAMPLE_RATE})}", file=sys.stdout, flush=True)
 
             # Cleanup transcription model
-            del model
-            gc.collect()
-            if device == "cuda":
-                torch.cuda.empty_cache()
+            cleanup_model(model, device)
 
             # 4. Align
             aligned_result = None # Initialize before try block
@@ -446,8 +447,7 @@ def main():
                 # aligned_result remains None
             finally:
                 # Cleanup alignment model
-                if model_a:
-                    del model_a
+                cleanup_model(model_a, device)
                 if 'metadata' in locals() and metadata:
                     del metadata
                 gc.collect()
@@ -473,11 +473,7 @@ def main():
                         # result_diarized remains None
                     finally:
                         # Cleanup diarization model
-                        if diarize_model:
-                            del diarize_model
-                            gc.collect()
-                            if device == "cuda":
-                                torch.cuda.empty_cache()
+                        cleanup_model(diarize_model, device)
                 elif args.enable_diarization and not args.hf_token:
                      print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'progress': 80, 'status': 'WhisperX Diarization enabled but Hugging Face token not provided. Skipping diarization.'})}", file=sys.stdout, flush=True)
             
