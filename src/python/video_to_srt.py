@@ -8,14 +8,9 @@ import tempfile
 import shutil # Added for shutil.which
 import torch # Added for device check
 import gc
-import resource
 import whisperx
 import io # Added for StringIO
 from funasr import AutoModel
-
-memory_limit_gb = 24
-soft, hard = resource.getrlimit(resource.RLIMIT_AS)
-resource.setrlimit(resource.RLIMIT_AS, (memory_limit_gb * 1024**3, hard))
 
 # Keep str_to_bool and format_timestamp as they are useful
 def str_to_bool(value):
@@ -406,7 +401,7 @@ def main():
                     print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': f'Failed to create/access model cache path {args.model_cache_path}: {str(e_cache)}. Using default.'})}", file=sys.stdout, flush=True)
 
             # Determine model based on language
-            model_name = "large-v3" # Default model
+            model_name = "large-v3-turbo" # Default model
             if args.language:
                 if args.language.lower() == 'ja':
                     model_name = "kotoba-tech/kotoba-whisper-v2.0-faster"

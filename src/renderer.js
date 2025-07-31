@@ -96,7 +96,6 @@ const transcriptionComputeTypeSelect = document.getElementById('transcription-co
 const huggingFaceTokenInput = document.getElementById('huggingface-token'); // Added
 const transcriptionConditionOnPreviousTextCheckbox = document.getElementById('transcription-condition-on-previous-text'); // Added
 const transcriptionThreadsInput = document.getElementById('transcription-threads'); // Added
-const enableFileLevelConcurrencyCheckbox = document.getElementById('enable-file-level-concurrency'); // Added
 const saveSettingsButton = document.getElementById('save-settings-button'); // Added
 
 const settingsErrorDisplayDiv = document.createElement('div'); // For displaying settings-related errors
@@ -1452,7 +1451,6 @@ saveSettingsButton.addEventListener('click', () => {
                 huggingFaceToken: huggingFaceTokenInput.value.trim(), // Added
                 transcriptionConditionOnPreviousText: transcriptionConditionOnPreviousTextCheckbox.checked, // Added
                 transcriptionThreads: validateNumericInput(transcriptionThreadsInput, "Transcription Threads", false, 1), // Added
-                enableFileLevelConcurrency: enableFileLevelConcurrencyCheckbox.checked, // Added
             };
     if (!isValid) {
         // displaySettingsError is already called by validateNumericInput
@@ -1575,7 +1573,6 @@ function loadSettingsIntoForm(settings) {
     huggingFaceTokenInput.value = settings.huggingFaceToken || ''; // Added
     transcriptionConditionOnPreviousTextCheckbox.checked = !!settings.transcriptionConditionOnPreviousText; // Added
     transcriptionThreadsInput.value = settings.transcriptionThreads || 8; // Added
-    enableFileLevelConcurrencyCheckbox.checked = !!settings.enableFileLevelConcurrency; // Added
 
     // Update UI based on loaded settings
     updateGlobalSourceLanguageDisabledState(); // Kept

@@ -53,7 +53,7 @@ function reconstructSrtBlock(index, timestamp, text) {
  * @returns {Promise<string[]>} - A promise that resolves to an array of validated translated SRT block strings (strings).
  * @throws {Error} If the chunk fails all retries or validation, or if cancelled.
  */
-async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLanguage, sourceLanguageNameForPrompt, settings, logCallback, jobId = null, gfc = null, previousChunkOriginalEntries = null, summaryContentForPrompt = "") { // Added summaryContentForPrompt
+async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLanguage, sourceLanguageNameForPrompt, settings, logCallback, jobId = null, gfc = null, previousChunkOriginalEntries = null, summaryContentForPrompt = "", upcomingChunkContext = null) { // Added summaryContentForPrompt and upcomingChunkContext
   let { systemPrompt, temperature, topP, filePathForLogging, originalInputPath, chunkRetries, thinkingBudget: uiControlledThinkingBudget, strongerRetryModelName, geminiModel } = settings; // Added strongerRetryModelName, geminiModel
     const standardMaxChunkRetries = (typeof chunkRetries === 'number' && chunkRetries > 0) ? chunkRetries : 2; // Use from settings or default to 2
     let chunkAttempt = 0;
@@ -85,7 +85,8 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
           originalChunk.length, // Pass the number of entries in the chunk
           contextToPassToGemini, // Pass the constructed context
           'primary', // Use primary model for initial GFC estimation
-          sourceLanguageNameForPrompt // Pass for {src} placeholder
+          sourceLanguageNameForPrompt, // Pass for {src} placeholder
+          upcomingChunkContext // Pass upcoming chunk context for token estimation
         );
         logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Estimated input tokens for GFC (using primary model alias): ${estimatedInputTokensForGFC}`, 'debug');
       } catch (estimationError) {
@@ -146,7 +147,8 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
                 contextToPassToGemini, // Pass the determined context (always, if available)
                 effectiveThinkingBudget, // Pass the conditionally set thinkingBudget
                 modelAliasToUse, // Pass the determined model alias
-                sourceLanguageNameForPrompt // Pass for {src} placeholder
+                sourceLanguageNameForPrompt, // Pass for {src} placeholder
+                upcomingChunkContext // Pass upcoming chunk context
             );
             
             const { translatedResponseArray, actualInputTokens, outputTokens } = geminiResult;
@@ -371,6 +373,17 @@ async function processSRTFile(identifier, srtContent, targetLanguage, sourceLang
             progressCallback(identifier, completedChunksInAttempt / chunks.length, `Starting Chunk ${currentChunkIndex + 1}/${chunks.length}`);
             
             const previousChunkDataForContext = (currentChunkIndex > 0) ? chunks[currentChunkIndex - 1] : null;
+            
+            // Collect upcoming chunk context (first 5 entries from next chunk)
+            let upcomingChunkContext = null;
+            if (currentChunkIndex < chunks.length - 1) {
+                const nextChunk = chunks[currentChunkIndex + 1];
+                const firstFiveEntries = nextChunk.slice(0, 5);
+                const contextTexts = firstFiveEntries.map(entry => entry.text);
+                if (contextTexts.length > 0) {
+                    upcomingChunkContext = contextTexts.join('\n');
+                }
+            }
     
             const taskPromise = processSingleChunkWithRetries(
                 chunks[currentChunkIndex],
@@ -382,7 +395,8 @@ async function processSRTFile(identifier, srtContent, targetLanguage, sourceLang
                 jobId,
                 gfc,
                 previousChunkDataForContext, // Pass the previous chunk's original entries
-                summaryContent // Pass summaryContent to processSingleChunkWithRetries
+                summaryContent, // Pass summaryContent to processSingleChunkWithRetries
+                upcomingChunkContext // Pass upcoming chunk context
             )
                 .then(validatedBlocks => {
                   chunkResultsForAttempt[currentChunkIndex] = { blocks: validatedBlocks, error: null };

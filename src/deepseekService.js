@@ -38,7 +38,7 @@ function isInitialized(modelAlias = 'primary') {
   return !!deepseekAI && !!modelInstances[modelAlias];
 }
 
-async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, temperature, topP, numberOfEntriesInChunk, abortSignal = null, previousChunkContext = null, thinkingBudget = -1, modelAlias = 'primary', sourceLanguageNameForPrompt) {
+async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, temperature, topP, numberOfEntriesInChunk, abortSignal = null, previousChunkContext = null, thinkingBudget = -1, modelAlias = 'primary', sourceLanguageNameForPrompt, upcomingChunkContext = null) {
     const modelName = modelInstances[modelAlias];
     if (!isInitialized(modelAlias)) {
         throw new Error(`DeepSeek client or model for alias '${modelAlias}' not initialized. Call initializeDeepSeekModel first.`);
@@ -84,6 +84,10 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
         userPrompt += `<previous_texts>\n${previousChunkContext.trim()}\n</previous_texts>\n\n`;
     }
 
+    if (upcomingChunkContext) {
+        userPrompt += `<upcoming_texts>\n${upcomingChunkContext.trim()}\n</upcoming_texts>\n\n`;
+    }
+
     userPrompt += `Translate all ${numberOfEntriesInChunk} text segments in <input> section from {src} to {lang}.\n\n`;
     userPrompt = userPrompt.replace(/{lang}/g, targetLanguage).replace(/{src}/g, srcReplacementValue);
 
@@ -109,8 +113,34 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
             messages: messages,
             temperature: temperature,
             top_p: topP,
-            max_tokens: 8192,
-            response_format: { type: 'json_object' },
+            response_format: {
+                type: 'json_schema',
+                json_schema: {
+                    name: 'translations',
+                    strict: true,
+                    schema: {
+                        type: 'object',
+                        properties: {
+                            translations: {
+                                type: 'array',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        index: {
+                                            type: 'integer'
+                                        },
+                                        text: {
+                                            type: 'string'
+                                        }
+                                    },
+                                    required: ['index', 'text']
+                                }
+                            }
+                        },
+                        required: ['translations']
+                    }
+                }
+            },
         }, { signal: abortSignal });
 
         const parsedResponse = JSON.parse(response.choices[0].message.content);
@@ -125,7 +155,7 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
     }
 }
 
-async function summarizeAndExtractTermsChunk(textChunk, summarySystemPrompt, geminiSettings, targetLanguageFullName, modelAlias = 'primary', abortSignal = null) {
+async function summarizeAndExtractTermsChunk(textChunk, summarySystemPrompt, geminiSettings, targetLanguageFullName, modelAlias = 'primary', abortSignal = null, previousChunkContext = null, upcomingChunkContext = null) {
     const modelName = modelInstances[modelAlias];
     if (!isInitialized(modelAlias)) {
         throw new Error(`DeepSeek client or model for alias '${modelAlias}' not initialized.`);
@@ -134,10 +164,18 @@ async function summarizeAndExtractTermsChunk(textChunk, summarySystemPrompt, gem
         return { summaryResponse: { theme: "", terms: [] }, actualInputTokens: 0, outputTokens: 0 };
     }
 
+    let contextPrompt = "";
+    if (previousChunkContext) {
+        contextPrompt += `<previous_texts>\n${previousChunkContext}\n</previous_texts>\n\n`;
+    }
+    if (upcomingChunkContext) {
+        contextPrompt += `<upcoming_texts>\n${upcomingChunkContext}\n</upcoming_texts>\n\n`;
+    }
+
     const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 50 important names/terminologies in {lang}.\n\n";
     const formattedReminderMessage = reminderMessageTemplate.replace(/{lang}/g, targetLanguageFullName || "the target language");
     const wrappedTextChunk = `<summarize_request>\n${textChunk}\n</summarize_request>`;
-    const finalUserPromptContent = formattedReminderMessage + wrappedTextChunk;
+    const finalUserPromptContent = contextPrompt + formattedReminderMessage + wrappedTextChunk;
 
     const messages = [
         { role: 'system', content: summarySystemPrompt },
@@ -154,7 +192,40 @@ async function summarizeAndExtractTermsChunk(textChunk, summarySystemPrompt, gem
             messages: messages,
             temperature: geminiSettings.temperature,
             top_p: geminiSettings.topP,
-            response_format: { type: 'json_object' },
+            response_format: {
+                type: 'json_schema',
+                json_schema: {
+                    name: 'summarization',
+                    strict: true,
+                    schema: {
+                        type: 'object',
+                        properties: {
+                            theme: {
+                                type: 'string'
+                            },
+                            terms: {
+                                type: 'array',
+                                items: {
+                                    type: 'object',
+                                    properties: {
+                                        src: {
+                                            type: 'string'
+                                        },
+                                        tgt: {
+                                            type: 'string'
+                                        },
+                                        note: {
+                                            type: 'string'
+                                        }
+                                    },
+                                    required: ['src', 'tgt', 'note']
+                                }
+                            }
+                        },
+                        required: ['theme', 'terms']
+                    }
+                }
+            },
         }, { signal: abortSignal });
 
         const summaryResponse = JSON.parse(response.choices[0].message.content);
@@ -168,7 +239,7 @@ async function summarizeAndExtractTermsChunk(textChunk, summarySystemPrompt, gem
     }
 }
 
-async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, numberOfEntriesInChunk, previousChunkContext = null, modelAlias = 'primary', sourceLanguageNameForPrompt) {
+async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, numberOfEntriesInChunk, previousChunkContext = null, modelAlias = 'primary', sourceLanguageNameForPrompt, upcomingChunkContext = null) {
     if (!isInitialized(modelAlias)) {
         throw new Error(`DeepSeek client or model for alias '${modelAlias}' not initialized.`);
     }
@@ -180,6 +251,10 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
     let combinedPromptPrefix = "";
     if (previousChunkContext && previousChunkContext.trim() !== "") {
         combinedPromptPrefix += `<previous_texts>\n${previousChunkContext.trim()}\n</previous_texts>\n\n`;
+    }
+
+    if (upcomingChunkContext) {
+        combinedPromptPrefix += `<upcoming_texts>\n${upcomingChunkContext.trim()}\n</upcoming_texts>\n\n`;
     }
 
     let entryReminderItself = "";
@@ -212,6 +287,33 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
     return userTokens + systemTokens;
 }
 
+async function estimateInputTokensForSummarization(textChunk, summarySystemPrompt, targetLanguageFullName, modelAlias = 'primary', previousChunkContext = null, upcomingChunkContext = null) {
+    if (!isInitialized(modelAlias)) {
+        throw new Error(`DeepSeek client or model for alias '${modelAlias}' not initialized.`);
+    }
+    if (typeof textChunk !== 'string' || textChunk.trim() === '') {
+        return 0;
+    }
+
+    let contextPrompt = "";
+    if (previousChunkContext) {
+        contextPrompt += `<previous_texts>\n${previousChunkContext}\n</previous_texts>\n\n`;
+    }
+    if (upcomingChunkContext) {
+        contextPrompt += `<upcoming_texts>\n${upcomingChunkContext}\n</upcoming_texts>\n\n`;
+    }
+
+    const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 50 important names/terminologies in {lang}.\n\n";
+    const formattedReminderMessage = reminderMessageTemplate.replace(/{lang}/g, targetLanguageFullName || "the target language");
+    const wrappedTextChunk = `<summarize_request>\n${textChunk}\n</summarize_request>`;
+    const finalUserPromptContent = contextPrompt + formattedReminderMessage + wrappedTextChunk;
+
+    const systemTokens = await countTokens(summarySystemPrompt);
+    const userTokens = await countTokens(finalUserPromptContent);
+    
+    return systemTokens + userTokens;
+}
+
 async function countTokens(text, modelAlias = 'primary') {
   if (typeof text !== 'string' || !text.trim()) {
     return 0;
@@ -233,4 +335,5 @@ module.exports = {
   summarizeAndExtractTermsChunk,
   countTokens,
   estimateInputTokensForTranslation,
+  estimateInputTokensForSummarization,
 };

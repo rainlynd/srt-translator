@@ -7,7 +7,6 @@ const summarizationHelper = require('./summarizationHelper');
 const modelProvider = require('./modelProvider'); // To access countTokens and summarizeAndExtractTermsChunk
 const { getSettings } = require('./settingsManager'); // To get default settings
 
-const DEFAULT_MAX_TOKENS_PER_SUMMARY_CHUNK = 10000;
 const DEFAULT_MODEL_ALIAS_FOR_SUMMARIZATION = 'primary'; // Or make configurable
 
 /**
@@ -72,10 +71,26 @@ async function processSrtForSummarization(jobDetails) {
         }
     
         logCallback(jobId, `Entries chunked into ${entryChunks.length} parts for summarization.`, 'info');
+    
     let accumulatedSummary = { theme: "", terms: [] };
     let existingTermsString = ""; // To pass to formatSummaryPrompt
 
     const totalChunks = entryChunks.length;
+    
+    // Pre-process bidirectional context for all chunks
+    const chunkContexts = [];
+    for (let i = 0; i < totalChunks; i++) {
+      const previousChunkContext = i > 0 ?
+        entryChunks[i - 1].slice(-5).map(entry => entry.text).join(' ') : null;
+      const upcomingChunkContext = i < totalChunks - 1 ?
+        entryChunks[i + 1].slice(0, 5).map(entry => entry.text).join(' ') : null;
+      
+      chunkContexts.push({
+        previousChunkContext,
+        upcomingChunkContext
+      });
+    }
+
     for (let i = 0; i < totalChunks; i++) {
       if (abortSignal?.aborted) {
         logCallback(jobId, `Summarization cancelled during chunk ${i + 1}/${totalChunks}.`, 'warn');
@@ -93,6 +108,9 @@ async function processSrtForSummarization(jobDetails) {
         targetLanguageFullName,
         existingTermsString
       );
+
+      // Get bidirectional context for current chunk
+      const { previousChunkContext, upcomingChunkContext } = chunkContexts[i];
 
       // Retry logic for summarization API call
       let attempt = 0;
@@ -123,7 +141,9 @@ async function processSrtForSummarization(jobDetails) {
             geminiApiSettings,
             targetLanguageFullName, // Pass targetLanguageFullName
             currentModelAlias,
-            abortSignal
+            abortSignal,
+            previousChunkContext,
+            upcomingChunkContext
           );
           gfc.releaseApiResources(jobId, actualInputTokens, outputTokens);
 
