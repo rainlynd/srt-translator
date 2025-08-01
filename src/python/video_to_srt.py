@@ -401,7 +401,7 @@ def main():
                     print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': f'Failed to create/access model cache path {args.model_cache_path}: {str(e_cache)}. Using default.'})}", file=sys.stdout, flush=True)
 
             # Determine model based on language
-            model_name = "large-v3" # Default model
+            model_name = "large-v3-turbo" # Default model
             if args.language:
                 if args.language.lower() == 'ja':
                     model_name = "kotoba-tech/kotoba-whisper-v2.0-faster"

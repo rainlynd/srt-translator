@@ -98,7 +98,8 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
           contextToPassToGemini,
           nextChunkContext,      // new parameter
           'primary', // Use primary model for initial GFC estimation
-          sourceLanguageNameForPrompt // Pass for {src} placeholder
+          sourceLanguageNameForPrompt, // Pass for {src} placeholder
+          upcomingChunkContext // Pass upcoming chunk context for token estimation
         );
         logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Estimated input tokens for GFC (using primary model alias): ${estimatedInputTokensForGFC}`, 'debug');
       } catch (estimationError) {
@@ -160,7 +161,8 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
                 nextChunkContext,      // new next context
                 effectiveThinkingBudget, // Pass the conditionally set thinkingBudget
                 modelAliasToUse, // Pass the determined model alias
-                sourceLanguageNameForPrompt // Pass for {src} placeholder
+                sourceLanguageNameForPrompt, // Pass for {src} placeholder
+                upcomingChunkContext // Pass upcoming chunk context
             );
             
             const { translatedResponseArray, actualInputTokens, outputTokens } = geminiResult;
@@ -385,6 +387,17 @@ async function processSRTFile(identifier, srtContent, targetLanguage, sourceLang
             progressCallback(identifier, completedChunksInAttempt / chunks.length, `Starting Chunk ${currentChunkIndex + 1}/${chunks.length}`);
             
             const previousChunkDataForContext = (currentChunkIndex > 0) ? chunks[currentChunkIndex - 1] : null;
+            
+            // Collect upcoming chunk context (first 5 entries from next chunk)
+            let upcomingChunkContext = null;
+            if (currentChunkIndex < chunks.length - 1) {
+                const nextChunk = chunks[currentChunkIndex + 1];
+                const firstFiveEntries = nextChunk.slice(0, 5);
+                const contextTexts = firstFiveEntries.map(entry => entry.text);
+                if (contextTexts.length > 0) {
+                    upcomingChunkContext = contextTexts.join('\n');
+                }
+            }
     
             const taskPromise = processSingleChunkWithRetries(
                 chunks[currentChunkIndex],

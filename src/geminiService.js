@@ -72,6 +72,10 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
       combinedPromptPrefix += `<previous_texts>\n${previousChunkContext.trim()}\n</previous_texts>\n\n`;
   }
 
+  if (upcomingChunkContext) {
+      combinedPromptPrefix += `<upcoming_texts>\n${upcomingChunkContext.trim()}\n</upcoming_texts>\n\n`;
+  }
+
   let entryReminderItself = "";
   if (typeof numberOfEntriesInChunk === 'number' && numberOfEntriesInChunk > 0) {
       entryReminderItself = `Translate all ${numberOfEntriesInChunk} text segments in <input> section from {src} to {lang}.\n\n`;
@@ -124,6 +128,48 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
  * @returns {Promise<number>} - A promise that resolves to the number of tokens.
  * @throws {Error} if the model is not initialized or counting fails.
  */
+async function estimateInputTokensForSummarization(textChunk, summarySystemPrompt, targetLanguageFullName, modelAlias = 'primary', previousChunkContext = null, upcomingChunkContext = null) {
+  const modelName = modelInstances[modelAlias];
+  if (!genAIInstance || !modelName) {
+    throw new Error(`Gemini client or model for alias '${modelAlias}' not initialized. Call initializeGeminiModel first for token estimation.`);
+  }
+  if (typeof textChunk !== 'string' || textChunk.trim() === '') {
+    return 0;
+  }
+
+  let contextPrompt = "";
+  if (previousChunkContext) {
+    contextPrompt += `<previous_texts>\n${previousChunkContext}\n</previous_texts>\n\n`;
+  }
+  if (upcomingChunkContext) {
+    contextPrompt += `<upcoming_texts>\n${upcomingChunkContext}\n</upcoming_texts>\n\n`;
+  }
+
+  const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 50 important names/terminologies in {lang}.\n\n";
+  const formattedReminderMessage = reminderMessageTemplate.replace(/{lang}/g, targetLanguageFullName || "the target language");
+  const wrappedTextChunk = `<summarize_request>\n${textChunk}\n</summarize_request>`;
+  const finalUserPromptContent = contextPrompt + formattedReminderMessage + wrappedTextChunk;
+
+  let totalTokens = 0;
+  if (summarySystemPrompt.trim()) {
+    const systemTokenResult = await genAIInstance.models.countTokens({
+      model: modelName,
+      contents: [{ role: "system", parts: [{text: summarySystemPrompt}]}]
+    });
+    totalTokens += systemTokenResult.totalTokens || 0;
+  }
+
+  if (finalUserPromptContent.trim()) {
+    const userTokenResult = await genAIInstance.models.countTokens({
+      model: modelName,
+      contents: [{ role: "user", parts: [{ text: finalUserPromptContent }] }]
+    });
+    totalTokens += userTokenResult.totalTokens || 0;
+  }
+  
+  return totalTokens;
+}
+
 async function countTokens(text, modelAlias = 'primary') {
   const modelName = modelInstances[modelAlias];
   if (!genAIInstance || !modelName) {
@@ -382,7 +428,9 @@ async function summarizeAndExtractTermsChunk(
   geminiSettings,
   targetLanguageFullName, // New parameter
   modelAlias = 'primary',
-  abortSignal = null
+  abortSignal = null,
+  previousChunkContext = null,
+  upcomingChunkContext = null
 ) {
   const modelName = modelInstances[modelAlias];
   if (!genAIInstance || !modelName) {
@@ -391,6 +439,14 @@ async function summarizeAndExtractTermsChunk(
   if (typeof textChunk !== 'string' || textChunk.trim() === '') {
     console.warn('summarizeAndExtractTermsChunk called with empty or invalid text chunk.');
     return { summaryResponse: { theme: "", terms: [] }, actualInputTokens: 0, outputTokens: 0 };
+  }
+
+  let contextPrompt = "";
+  if (previousChunkContext) {
+    contextPrompt += `<previous_texts>\n${previousChunkContext}\n</previous_texts>\n\n`;
+  }
+  if (upcomingChunkContext) {
+    contextPrompt += `<upcoming_texts>\n${upcomingChunkContext}\n</upcoming_texts>\n\n`;
   }
 
   const generationConfig = {
@@ -437,7 +493,7 @@ async function summarizeAndExtractTermsChunk(
     const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 50 important names/terminologies in {lang}.\n\n";
     const formattedReminderMessage = reminderMessageTemplate.replace(/{lang}/g, targetLanguageFullName || "the target language"); // Fallback if targetLanguageFullName is not provided
     const wrappedTextChunk = `<summarize_request>\n${textChunk}\n</summarize_request>`;
-    const finalUserPromptContent = formattedReminderMessage + wrappedTextChunk;
+    const finalUserPromptContent = contextPrompt + formattedReminderMessage + wrappedTextChunk;
 
     console.debug(`[Gemini Summarize Request] Modified User Input:\n${finalUserPromptContent}`);
     console.debug(`[Gemini Summarize Request] Generation Config:\n${JSON.stringify(generationConfig, null, 2)}`);
@@ -521,4 +577,5 @@ module.exports = {
   estimateInputTokensForTranslation,
   countTokens, // Added
   summarizeAndExtractTermsChunk, // Added
+  estimateInputTokensForSummarization, // Added
 };

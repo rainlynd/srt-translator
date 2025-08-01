@@ -72,7 +72,7 @@ class GlobalFileAdmissionController extends EventEmitter {
         this.activeFileJobs = new Map(); // jobId -> FileJob for active jobs
         this.apiCallRequestQueue = [];
         this.rpmLimit = this.settings.rpm || 1000;
-        this.maxActiveFilesProcessing = this.settings.enableFileLevelConcurrency ? (this.settings.maxActiveFilesProcessing || 9999) : 1;
+        this.maxActiveFilesProcessing = 9999;
         this.cancellationFlags = { srt: false, video: false }; // Tracks cancellation per job type
 
         // RPM Token Bucket Settings
@@ -98,7 +98,7 @@ class GlobalFileAdmissionController extends EventEmitter {
         this.settings = newSettings;
         const oldRpmLimit = this.rpmLimit;
         this.rpmLimit = this.settings.rpm || 1000;
-        this.maxActiveFilesProcessing = this.settings.enableFileLevelConcurrency ? (this.settings.maxActiveFilesProcessing || 9999) : 1;
+        this.maxActiveFilesProcessing = 9999;
         this.tpmLimit = this.settings.tpmLimit || 1000000; // Update TPM limit
         this.tpmOutputEstimationFactor = this.settings.tpmOutputEstimationFactor || 2.5; // Update factor
 

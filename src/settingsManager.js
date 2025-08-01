@@ -83,7 +83,6 @@ Below is an example for the output:
   transcriptionConditionOnPreviousText: false, // Default as per plan
   transcriptionThreads: 8, // Default as per plan
   thinkingBudget: 0, // Default to disabled
-  enableFileLevelConcurrency: true, // File-level concurrency toggle
 };
 
 /**

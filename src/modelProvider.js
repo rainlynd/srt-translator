@@ -67,6 +67,11 @@ async function translateChunk(...args) {
   return provider.translateChunk(...args);
 }
 
+async function estimateInputTokensForTranslation(...args) {
+  const provider = await getProvider();
+  return provider.estimateInputTokensForTranslation(...args);
+}
+
 async function summarizeAndExtractTermsChunk(...args) {
   const provider = await getProvider();
   return provider.summarizeAndExtractTermsChunk(...args);
@@ -89,4 +94,5 @@ module.exports = {
   summarizeAndExtractTermsChunk,
   countTokens,
   isInitialized,
+  estimateInputTokensForTranslation,
 };
