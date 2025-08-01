@@ -11,6 +11,11 @@ import gc
 import whisperx
 import io # Added for StringIO
 from funasr import AutoModel
+import resource # For setting memory limits
+
+memory_limit_gb = 24
+soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+resource.setrlimit(resource.RLIMIT_AS, (memory_limit_gb * 1024**3, hard))
 
 # Keep str_to_bool and format_timestamp as they are useful
 def str_to_bool(value):
@@ -184,6 +189,8 @@ def _process_funasr_segments(funasr_output_list, diarization_enabled, enable_seg
 
 def main():
     parser = argparse.ArgumentParser(description="Transcribe video to SRT using WhisperX.")
+    # Track whether alignment failed anywhere so we can reflect this in the final event
+    alignment_failed = False
     parser.add_argument("video_file_path", help="Absolute path to the video file.")
     parser.add_argument("--output_srt_path", help="Optional: File path to write SRT output. Prints to stdout if not given.", default=None)
     
@@ -336,12 +343,29 @@ def main():
                         aligned_funasr_result = whisperx.align(segments_for_alignment, model_a, metadata_a, audio, device, return_char_alignments=False)
                         print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 75, 'status': 'FunASR: WhisperX alignment complete.'})}", file=sys.stdout, flush=True)
                     except Exception as align_error:
-                        # If alignment fails for any reason, log a warning and proceed with unaligned segments.
-                        print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': f'FunASR: Alignment failed: {str(align_error)}. Proceeding with unaligned segments.'})}", file=sys.stdout, flush=True)
-                        # aligned_funasr_result remains None
+                        # Try CPU fallback if OOM on CUDA
+                        if "out of memory" in str(align_error).lower() and device == "cuda":
+                            print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': 'FunASR: GPU out of memory during alignment. Retrying on CPU...'})}", file=sys.stdout, flush=True)
+                            # Cleanup GPU alignment model
+                            cleanup_model(model_a, device)
+                            if 'metadata_a' in locals() and metadata_a:
+                                del metadata_a
+                            gc.collect()
+                            torch.cuda.empty_cache()
+                            # Reload on CPU and retry
+                            cpu_device = "cpu"
+                            model_a, metadata_a = whisperx.load_align_model(language_code=language_code_for_alignment, device=cpu_device)
+                            aligned_funasr_result = whisperx.align(segments_for_alignment, model_a, metadata_a, audio, cpu_device, return_char_alignments=False)
+                            print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 75, 'status': 'FunASR: WhisperX alignment complete on CPU (fallback).'})}", file=sys.stdout, flush=True)
+                        else:
+                            # If alignment fails for any other reason, log a warning and proceed with unaligned segments.
+                            alignment_failed = True
+                            print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': 'Warning: alignment fails'})}", file=sys.stdout, flush=True)
+                            print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': f'FunASR: Alignment failed: {str(align_error)}. Proceeding with unaligned segments.'})}", file=sys.stdout, flush=True)
+                            # aligned_funasr_result remains None
                     finally:
                         # Cleanup alignment model
-                        cleanup_model(model_a, device)
+                        cleanup_model(model_a, device if model_a is not None else "cpu")
                         if 'metadata_a' in locals() and metadata_a:
                             del metadata_a
                         gc.collect()
@@ -420,8 +444,28 @@ def main():
             
             # Audio is already loaded before this if/else block
             print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 35, 'status': 'WhisperX transcribing (using pre-loaded audio)...'})}", file=sys.stdout, flush=True)
-            result = model.transcribe(audio, batch_size=args.batch_size, chunk_size=10, language=args.language)
-            
+            try:
+                result = model.transcribe(audio, batch_size=args.batch_size, chunk_size=10, language=args.language)
+            except Exception as transcribe_error:
+                if "out of memory" in str(transcribe_error).lower() and device == "cuda":
+                    print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': 'WhisperX: GPU out of memory during transcription. Retrying on CPU...'})}", file=sys.stdout, flush=True)
+                    # Cleanup GPU model
+                    cleanup_model(model, device)
+                    # Reload on CPU and retry
+                    cpu_device = "cpu"
+                    model = whisperx.load_model(
+                        model_name,
+                        cpu_device,
+                        compute_type="float32",  # safer on CPU
+                        language=args.language,
+                        download_root=model_download_root,
+                        threads=args.threads,
+                    )
+                    print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'status': 'WhisperX model re-loaded on CPU. Retrying transcription...'})}", file=sys.stdout, flush=True)
+                    result = model.transcribe(audio, batch_size=max(1, args.batch_size // 2), chunk_size=10, language=args.language)
+                else:
+                    raise
+
             detected_language = result["language"] # Update detected_language
             print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 60, 'status': 'WhisperX transcription complete.', 'detected_language': detected_language, 'duration_seconds': audio.shape[0] / whisperx.audio.SAMPLE_RATE})}", file=sys.stdout, flush=True)
 
@@ -436,11 +480,28 @@ def main():
                 aligned_result = whisperx.align(result["segments"], model_a, metadata, audio, device, return_char_alignments=False)
                 print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 75, 'status': 'WhisperX alignment complete.'})}", file=sys.stdout, flush=True)
             except Exception as align_error:
-                print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': f'WhisperX: Alignment failed: {str(align_error)}. Proceeding with unaligned segments.'})}", file=sys.stdout, flush=True)
-                # aligned_result remains None
+                # Try CPU fallback for alignment if OOM on CUDA
+                if "out of memory" in str(align_error).lower() and device == "cuda":
+                    print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': 'WhisperX: GPU out of memory during alignment. Retrying on CPU...'})}", file=sys.stdout, flush=True)
+                    # Clean up GPU alignment model
+                    cleanup_model(model_a, device)
+                    if 'metadata' in locals() and metadata:
+                        del metadata
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                    # Reload alignment model on CPU and retry
+                    cpu_device = "cpu"
+                    model_a, metadata = whisperx.load_align_model(language_code=detected_language, device=cpu_device)
+                    aligned_result = whisperx.align(result["segments"], model_a, metadata, audio, cpu_device, return_char_alignments=False)
+                    print(f"PROGRESS_JSON:{json.dumps({'type': 'info', 'progress': 75, 'status': 'WhisperX alignment complete on CPU (fallback).'})}", file=sys.stdout, flush=True)
+                else:
+                    alignment_failed = True
+                    print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': 'Warning: alignment fails'})}", file=sys.stdout, flush=True)
+                    print(f"PROGRESS_JSON:{json.dumps({'type': 'warning', 'status': f'WhisperX: Alignment failed: {str(align_error)}. Proceeding with unaligned segments.'})}", file=sys.stdout, flush=True)
+                    # aligned_result remains None
             finally:
                 # Cleanup alignment model
-                cleanup_model(model_a, device)
+                cleanup_model(model_a, device if model_a is not None else "cpu")
                 if 'metadata' in locals() and metadata:
                     del metadata
                 gc.collect()
@@ -505,7 +566,7 @@ def main():
         if args.output_srt_path:
             with open(args.output_srt_path, "w", encoding="utf-8") as f:
                 f.write(full_srt_output)
-            print(f"PROGRESS_JSON:{json.dumps({'type': 'complete', 'progress': 100, 'status': 'SRT file generated.', 'output_path': args.output_srt_path, 'detected_language': detected_language})}", file=sys.stdout, flush=True)
+            print(f"PROGRESS_JSON:{json.dumps({'type': 'complete', 'progress': 100, 'status': 'SRT file generated.', 'output_path': args.output_srt_path, 'detected_language': detected_language, 'alignment': ('failed' if alignment_failed else 'ok')})}", file=sys.stdout, flush=True)
         else:
             # Print to stdout, ensuring no PROGRESS_JSON prefix for the actual SRT data
             sys.stdout.write(full_srt_output)
