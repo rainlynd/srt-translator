@@ -47,11 +47,12 @@ function isInitialized(modelAlias = 'primary') { // Modified
  * @param {string} systemPromptTemplate - The system prompt template.
  * @param {number} [numberOfEntriesInChunk] - Optional: The number of entries in this specific chunk.
  * @param {string} [previousChunkContext=null] - Optional: Concatenated string of the last few lines from the previous chunk.
+ * @param {string} [nextChunkContext=null] - Optional: Concatenated string of the first few lines from the next chunk.
  * @param {string} [modelAlias='primary'] - Optional: The model alias to use for estimation.
  * @param {string} [sourceLanguageNameForPrompt] - Optional: The name/code of the source language for the {src} placeholder.
  * @returns {Promise<number>} - A promise that resolves to the estimated total input tokens.
  */
-async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, numberOfEntriesInChunk, previousChunkContext = null, modelAlias = 'primary', sourceLanguageNameForPrompt) {
+async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, numberOfEntriesInChunk, previousChunkContext = null, nextChunkContext = null, modelAlias = 'primary', sourceLanguageNameForPrompt) {
   const modelName = modelInstances[modelAlias];
   if (!genAIInstance || !modelName) {
     throw new Error(`Gemini client or model for alias '${modelAlias}' not initialized. Call initializeGeminiModel first for token estimation.`);
@@ -94,7 +95,12 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
       wrappedTextsPart = `<input>\n${textsForUserPromptForEstimationContent}\n</input>`;
   }
   
-  const finalUserPromptForEstimation = combinedPromptPrefix + wrappedTextsPart;
+  let finalUserPromptForEstimation = combinedPromptPrefix + wrappedTextsPart;
+  
+  // Add next_texts after the input block for token estimation
+  if (nextChunkContext && nextChunkContext.trim() !== "") {
+      finalUserPromptForEstimation += `\n\n<next_texts>\n${nextChunkContext.trim()}\n</next_texts>\n\n`;
+  }
 
   let userTokens = 0;
   if (finalUserPromptForEstimation.trim()) { // Only count if there's actual user text
@@ -152,13 +158,14 @@ async function countTokens(text, modelAlias = 'primary') {
  * @param {number} [numberOfEntriesInChunk] - Optional: The number of entries in this specific chunk.
  * @param {AbortSignal} [abortSignal] - Optional: An AbortSignal to cancel the API request.
  * @param {string} [previousChunkContext] - Optional: Concatenated string of the last few lines from the previous chunk.
+ * @param {string} [nextChunkContext] - Optional: Concatenated string of the first few lines from the next chunk.
  * @param {number} [thinkingBudget=-1] - Optional: The thinking budget for the request.
  * @param {string} [modelAlias='primary'] - Optional: The model alias to use for translation.
  * @param {string} [sourceLanguageNameForPrompt] - Optional: The name/code of the source language for the {src} placeholder.
  * @returns {Promise<{translatedResponseArray: Array<{index: number, text: string}>, actualInputTokens: number, outputTokens: number}>}
  * - A promise that resolves to an object containing the translated array, actual input tokens, and output tokens.
  */
-async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, temperature, topP, numberOfEntriesInChunk, abortSignal = null, previousChunkContext = null, thinkingBudget = -1, modelAlias = 'primary', sourceLanguageNameForPrompt) {
+async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, temperature, topP, numberOfEntriesInChunk, abortSignal = null, previousChunkContext = null, nextChunkContext = null, thinkingBudget = -1, modelAlias = 'primary', sourceLanguageNameForPrompt) {
   const modelName = modelInstances[modelAlias];
   if (!genAIInstance || !modelName) {
     throw new Error(`Gemini client or model for alias '${modelAlias}' not initialized. Call initializeGeminiModel first.`);
@@ -176,6 +183,10 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
   if (previousChunkContext && previousChunkContext.trim() !== "") {
       // previousChunkContext is already "Previous text segments:\nsegment1..."
       combinedPromptPrefix += `<previous_texts>\n${previousChunkContext.trim()}\n</previous_texts>\n\n`;
+  }
+
+  if (nextChunkContext && nextChunkContext.trim() !== "") {
+      combinedPromptPrefix += `\n\n<next_texts>\n${nextChunkContext.trim()}\n</next_texts>\n\n`;
   }
 
   let entryReminderItself = "";
@@ -201,7 +212,12 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
       wrappedTextsPart = `<input>\n${textsForUserPromptContent}\n</input>`;
   }
 
-  const userPromptContent = combinedPromptPrefix + wrappedTextsPart; // This is the final user prompt
+  let userPromptContent = combinedPromptPrefix + wrappedTextsPart; // This is the final user prompt
+  
+  // Add next_texts after the input block for actual translation
+  if (nextChunkContext && nextChunkContext.trim() !== "") {
+      userPromptContent += `\n\n<next_texts>\n${nextChunkContext.trim()}\n</next_texts>\n\n`;
+  }
 
   const generationConfig = {
     temperature: temperature,

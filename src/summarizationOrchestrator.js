@@ -7,7 +7,6 @@ const summarizationHelper = require('./summarizationHelper');
 const modelProvider = require('./modelProvider'); // To access countTokens and summarizeAndExtractTermsChunk
 const { getSettings } = require('./settingsManager'); // To get default settings
 
-const DEFAULT_MAX_TOKENS_PER_SUMMARY_CHUNK = 10000;
 const DEFAULT_MODEL_ALIAS_FOR_SUMMARIZATION = 'primary'; // Or make configurable
 
 /**

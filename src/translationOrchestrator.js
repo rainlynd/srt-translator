@@ -50,10 +50,12 @@ function reconstructSrtBlock(index, timestamp, text) {
  * @param {Function} logCallback - For logging messages.
  * @param {string} [jobId] - Optional job ID for context.
  * @param {object} [gfc] - Optional GlobalFileAdmissionController instance for token management.
+ * @param {Array<Array<{index: string, timestamp: string, text: string, originalBlock: string}>>} [chunks] - Optional: All chunks for next context collection.
+ * @param {string} [summaryContentForPrompt=""] - Optional: Content from summarization stage.
  * @returns {Promise<string[]>} - A promise that resolves to an array of validated translated SRT block strings (strings).
  * @throws {Error} If the chunk fails all retries or validation, or if cancelled.
  */
-async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLanguage, sourceLanguageNameForPrompt, settings, logCallback, jobId = null, gfc = null, previousChunkOriginalEntries = null, summaryContentForPrompt = "") { // Added summaryContentForPrompt
+async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLanguage, sourceLanguageNameForPrompt, settings, logCallback, jobId = null, gfc = null, previousChunkOriginalEntries = null, chunks = null, summaryContentForPrompt = "") { // Added chunks parameter and summaryContentForPrompt
   let { systemPrompt, temperature, topP, filePathForLogging, originalInputPath, chunkRetries, thinkingBudget: uiControlledThinkingBudget, strongerRetryModelName, geminiModel } = settings; // Added strongerRetryModelName, geminiModel
     const standardMaxChunkRetries = (typeof chunkRetries === 'number' && chunkRetries > 0) ? chunkRetries : 2; // Use from settings or default to 2
     let chunkAttempt = 0;
@@ -75,6 +77,16 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
         }
     }
 
+    // Collect next chunk context
+    let nextChunkContext = null;
+    if (chunks.length > chunkIndex + 1) {
+        const nextChunkFirstEntries = chunks[chunkIndex + 1].slice(0, 5);
+        const nextContextTexts = nextChunkFirstEntries.map(entry => entry.text);
+        if (nextContextTexts.length > 0) {
+            nextChunkContext = `${nextContextTexts.join('\n')}`;
+        }
+    }
+
     if (gfc) { // Only estimate if GFC is present
       try {
         // modelAliasToUse will be determined inside the retry loop, default to 'primary' for initial estimation
@@ -83,7 +95,8 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
           targetLanguage,
           effectiveSystemPrompt, // Use system prompt with summary
           originalChunk.length, // Pass the number of entries in the chunk
-          contextToPassToGemini, // Pass the constructed context
+          contextToPassToGemini,
+          nextChunkContext,      // new parameter
           'primary', // Use primary model for initial GFC estimation
           sourceLanguageNameForPrompt // Pass for {src} placeholder
         );
@@ -143,7 +156,8 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
                 topP,
                 originalChunk.length,
                 settings.abortSignal, // Assuming settings might carry an AbortSignal for the job
-                contextToPassToGemini, // Pass the determined context (always, if available)
+                contextToPassToGemini, // previous context
+                nextChunkContext,      // new next context
                 effectiveThinkingBudget, // Pass the conditionally set thinkingBudget
                 modelAliasToUse, // Pass the determined model alias
                 sourceLanguageNameForPrompt // Pass for {src} placeholder
@@ -382,6 +396,7 @@ async function processSRTFile(identifier, srtContent, targetLanguage, sourceLang
                 jobId,
                 gfc,
                 previousChunkDataForContext, // Pass the previous chunk's original entries
+                chunks, // Pass all chunks for next context collection
                 summaryContent // Pass summaryContent to processSingleChunkWithRetries
             )
                 .then(validatedBlocks => {

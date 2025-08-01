@@ -8,14 +8,9 @@ import tempfile
 import shutil # Added for shutil.which
 import torch # Added for device check
 import gc
-import resource
 import whisperx
 import io # Added for StringIO
 from funasr import AutoModel
-
-memory_limit_gb = 24
-soft, hard = resource.getrlimit(resource.RLIMIT_AS)
-resource.setrlimit(resource.RLIMIT_AS, (memory_limit_gb * 1024**3, hard))
 
 # Keep str_to_bool and format_timestamp as they are useful
 def str_to_bool(value):

@@ -38,7 +38,7 @@ function isInitialized(modelAlias = 'primary') {
   return !!deepseekAI && !!modelInstances[modelAlias];
 }
 
-async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, temperature, topP, numberOfEntriesInChunk, abortSignal = null, previousChunkContext = null, thinkingBudget = -1, modelAlias = 'primary', sourceLanguageNameForPrompt) {
+async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, temperature, topP, numberOfEntriesInChunk, abortSignal = null, previousChunkContext = null, nextChunkContext = null, thinkingBudget = -1, modelAlias = 'primary', sourceLanguageNameForPrompt) {
     const modelName = modelInstances[modelAlias];
     if (!isInitialized(modelAlias)) {
         throw new Error(`DeepSeek client or model for alias '${modelAlias}' not initialized. Call initializeDeepSeekModel first.`);
@@ -97,6 +97,12 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
     }
     
     userPrompt += `<input>\n${textsForUserPromptContent}\n</input>`;
+    
+    // Add next_texts after the input block
+    if (nextChunkContext && nextChunkContext.trim() !== "") {
+        userPrompt += `\n\n<next_texts>\n${nextChunkContext.trim()}\n</next_texts>\n\n`;
+    }
+    
     messages.push({ role: 'user', content: userPrompt });
 
     console.debug(`[DeepSeek Request] Model Alias: ${modelAlias}`);
@@ -109,7 +115,7 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
             messages: messages,
             temperature: temperature,
             top_p: topP,
-            max_tokens: 8192,
+            max_tokens: 65536,
             response_format: { type: 'json_object' },
         }, { signal: abortSignal });
 
@@ -168,7 +174,7 @@ async function summarizeAndExtractTermsChunk(textChunk, summarySystemPrompt, gem
     }
 }
 
-async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, numberOfEntriesInChunk, previousChunkContext = null, modelAlias = 'primary', sourceLanguageNameForPrompt) {
+async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLanguage, systemPromptTemplate, numberOfEntriesInChunk, previousChunkContext = null, nextChunkContext = null, modelAlias = 'primary', sourceLanguageNameForPrompt) {
     if (!isInitialized(modelAlias)) {
         throw new Error(`DeepSeek client or model for alias '${modelAlias}' not initialized.`);
     }
@@ -204,7 +210,12 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
         wrappedTextsPart = `<input>\n${textsForUserPromptForEstimationContent}\n</input>`;
     }
     
-    const finalUserPromptForEstimation = combinedPromptPrefix + wrappedTextsPart;
+    let finalUserPromptForEstimation = combinedPromptPrefix + wrappedTextsPart;
+    
+    // Add next_texts after the input block for token estimation
+    if (nextChunkContext && nextChunkContext.trim() !== "") {
+        finalUserPromptForEstimation += `\n\n<next_texts>\n${nextChunkContext.trim()}\n</next_texts>\n\n`;
+    }
 
     const systemTokens = await countTokens(processedSystemPrompt);
     const userTokens = await countTokens(finalUserPromptForEstimation);
