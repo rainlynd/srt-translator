@@ -194,8 +194,20 @@ async function processSrtForSummarization(jobDetails) {
               logCallback(jobId, `Switching to retry model ${retryModelAlias} for next attempt.`, 'warn');
               currentModelAlias = retryModelAlias;
             }
-            const delay = Math.pow(2, attempt -1) * (settings.initialRetryDelay || 1000); // Exponential backoff
-            logCallback(jobId, `Waiting ${delay}ms before next attempt...`, 'info');
+            // Backoff handling with 429 provider delay first, else exponential with jitter
+            let delay;
+            const isRateLimit = (lastError && (lastError.status === 429 || lastError.finishReason === 'RATE_LIMIT'));
+            if (isRateLimit && typeof lastError.retryDelayMs === 'number' && lastError.retryDelayMs > 0) {
+              delay = lastError.retryDelayMs;
+              logCallback(jobId, `Rate limit detected. Using provider suggested delay of ${delay}ms before next attempt...`, 'warn');
+            } else {
+              const base = settings.initialRetryDelay || 1000;
+              const maxDelay = settings.maxRetryDelay || 30000;
+              const exp = Math.min(maxDelay, base * Math.pow(2, attempt - 1));
+              const jitterFactor = 0.5 + Math.random(); // 0.5 to 1.5
+              delay = Math.floor(exp * jitterFactor);
+              logCallback(jobId, `Using exponential backoff with jitter: ${delay}ms before next attempt...`, 'info');
+            }
             await new Promise(resolve => setTimeout(resolve, delay));
           }
         }

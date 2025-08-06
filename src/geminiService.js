@@ -523,7 +523,7 @@ async function summarizeAndExtractTermsChunk(
         // Validate the summaryResponse structure
         if (
           typeof summaryResponse !== 'object' || summaryResponse === null ||
-          typeof summaryResponse.theme !== 'string' ||
+          typeof summaryResponse.theme !== 'string' || summaryResponse.theme.trim() === '' ||
           !Array.isArray(summaryResponse.terms) ||
           !summaryResponse.terms.every(term =>
             typeof term === 'object' && term !== null &&
@@ -532,8 +532,7 @@ async function summarizeAndExtractTermsChunk(
             typeof term.note === 'string' && term.note.trim() !== ''
           )
         ) {
-          let errorMessage = 'Parsed JSON for summarization does not match the expected schema (theme: string, terms: Array<{src: string, tgt: string, note?: string}>) or contains empty src/tgt.';
-          const validationError = new Error(errorMessage);
+          const validationError = new Error('Parsed JSON for summarization does not match the required schema or contains empty fields.');
           validationError.isApiError = true;
           validationError.finishReason = 'BAD_SUMMARY_SCHEMA_RESPONSE';
           throw validationError;
@@ -564,7 +563,8 @@ async function summarizeAndExtractTermsChunk(
   } catch (error) {
     console.error('Error calling Gemini API for summarization or processing its response:', error);
     if (!error.isApiError) {
-        error.isApiError = true;
+      error.isApiError = true;
+      error.finishReason = error.finishReason || 'SUMMARY_UNKNOWN_ERROR';
     }
     throw error;
   }

@@ -231,10 +231,14 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
                 let delayMs;
                 if (useApiSuggestedDelay && specificRetryDelayMs > 0) {
                     delayMs = specificRetryDelayMs;
-                    logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}) - Using API suggested retry delay of ${delayMs / 1000}s...`, 'info');
+                    logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}) - Using API suggested retry delay of ${Math.round(delayMs / 1000)}s...`, 'info');
                 } else {
-                    delayMs = 1000 + (chunkAttempt * 500);
-                    logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}) - Using calculated retry delay of ${delayMs / 1000}s...`, 'info');
+                    const base = settings.initialRetryDelay || 1000;
+                    const maxDelay = settings.maxRetryDelay || 30000;
+                    const exp = Math.min(maxDelay, base * Math.pow(2, chunkAttempt - 1));
+                    const jitterFactor = 0.5 + Math.random(); // 0.5 to 1.5
+                    delayMs = Math.floor(exp * jitterFactor);
+                    logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}) - Using exponential backoff with jitter of ${delayMs}ms...`, 'info');
                 }
                 await new Promise(resolve => setTimeout(resolve, delayMs));
             }

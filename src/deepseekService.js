@@ -180,23 +180,15 @@ async function summarizeAndExtractTermsChunk(textChunk, summarySystemPrompt, gem
                     schema: {
                         type: 'object',
                         properties: {
-                            theme: {
-                                type: 'string'
-                            },
+                            theme: { type: 'string' },
                             terms: {
                                 type: 'array',
                                 items: {
                                     type: 'object',
                                     properties: {
-                                        src: {
-                                            type: 'string'
-                                        },
-                                        tgt: {
-                                            type: 'string'
-                                        },
-                                        note: {
-                                            type: 'string'
-                                        }
+                                        src: { type: 'string' },
+                                        tgt: { type: 'string' },
+                                        note: { type: 'string' }
                                     },
                                     required: ['src', 'tgt', 'note']
                                 }
@@ -208,13 +200,61 @@ async function summarizeAndExtractTermsChunk(textChunk, summarySystemPrompt, gem
             },
         }, { signal: abortSignal });
 
-        const summaryResponse = JSON.parse(response.choices[0].message.content);
-        const actualInputTokens = response.usage.prompt_tokens;
-        const outputTokens = response.usage.completion_tokens;
+        // Parse and validate content
+        let summaryResponse;
+        try {
+            summaryResponse = JSON.parse(response.choices?.[0]?.message?.content || '{}');
+        } catch (e) {
+            const err = new Error(`Failed to parse DeepSeek summarization JSON: ${e.message}`);
+            err.isApiError = true;
+            err.finishReason = 'BAD_SUMMARY_JSON_RESPONSE';
+            throw err;
+        }
+
+        // Minimal schema validation mirroring Gemini
+        const valid =
+            typeof summaryResponse === 'object' && summaryResponse !== null &&
+            typeof summaryResponse.theme === 'string' && summaryResponse.theme.trim() !== '' &&
+            Array.isArray(summaryResponse.terms) &&
+            summaryResponse.terms.every(term =>
+                typeof term === 'object' && term !== null &&
+                typeof term.src === 'string' && term.src.trim() !== '' &&
+                typeof term.tgt === 'string' && term.tgt.trim() !== '' &&
+                typeof term.note === 'string' && term.note.trim() !== ''
+            );
+
+        if (!valid) {
+            const err = new Error('DeepSeek summarization response failed schema validation.');
+            err.isApiError = true;
+            err.finishReason = 'BAD_SUMMARY_SCHEMA_RESPONSE';
+            throw err;
+        }
+
+        const actualInputTokens = response.usage?.prompt_tokens || 0;
+        const outputTokens = response.usage?.completion_tokens || 0;
 
         return { summaryResponse, actualInputTokens, outputTokens };
     } catch (error) {
         console.error('Error calling DeepSeek API for summarization:', error);
+
+        // Map rate limit if detectable via SDK error
+        if (error?.status === 429 || error?.code === 429) {
+            error.isApiError = true;
+            error.finishReason = 'RATE_LIMIT';
+            // Try to read Retry-After header if present
+            const retryAfter = error?.response?.headers?.['retry-after'];
+            if (retryAfter) {
+                const seconds = parseInt(retryAfter, 10);
+                if (!Number.isNaN(seconds) && seconds > 0) {
+                    error.retryDelayMs = seconds * 1000;
+                }
+            }
+        }
+
+        if (!error.isApiError) {
+            error.isApiError = true;
+            error.finishReason = error.finishReason || 'SUMMARY_UNKNOWN_ERROR';
+        }
         throw error;
     }
 }
