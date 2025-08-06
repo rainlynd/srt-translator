@@ -72,9 +72,7 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
       combinedPromptPrefix += `<previous_texts>\n${previousChunkContext.trim()}\n</previous_texts>\n\n`;
   }
 
-  if (upcomingChunkContext) {
-      combinedPromptPrefix += `<upcoming_texts>\n${upcomingChunkContext.trim()}\n</upcoming_texts>\n\n`;
-  }
+  // Do not put upcoming_texts before input; it will be placed right after input below
 
   let entryReminderItself = "";
   if (typeof numberOfEntriesInChunk === 'number' && numberOfEntriesInChunk > 0) {
@@ -101,9 +99,9 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
   
   let finalUserPromptForEstimation = combinedPromptPrefix + wrappedTextsPart;
   
-  // Add next_texts after the input block for token estimation
+  // Ensure a single upcoming_texts block immediately after input for token estimation
   if (nextChunkContext && nextChunkContext.trim() !== "") {
-      finalUserPromptForEstimation += `\n\n<next_texts>\n${nextChunkContext.trim()}\n</next_texts>\n\n`;
+      finalUserPromptForEstimation += `\n\n<upcoming_texts>\n${nextChunkContext.trim()}\n</upcoming_texts>\n\n`;
   }
 
   let userTokens = 0;
@@ -141,14 +139,17 @@ async function estimateInputTokensForSummarization(textChunk, summarySystemPromp
   if (previousChunkContext) {
     contextPrompt += `<previous_texts>\n${previousChunkContext}\n</previous_texts>\n\n`;
   }
-  if (upcomingChunkContext) {
-    contextPrompt += `<upcoming_texts>\n${upcomingChunkContext}\n</upcoming_texts>\n\n`;
-  }
+  // Do not add upcoming_texts here for estimation; will be appended after summarize_request
 
   const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 50 important names/terminologies in {lang}.\n\n";
   const formattedReminderMessage = reminderMessageTemplate.replace(/{lang}/g, targetLanguageFullName || "the target language");
   const wrappedTextChunk = `<summarize_request>\n${textChunk}\n</summarize_request>`;
-  const finalUserPromptContent = contextPrompt + formattedReminderMessage + wrappedTextChunk;
+  // Place upcoming_texts immediately after summarize_request for estimation too
+  let afterSummarizeBlock = "";
+  if (upcomingChunkContext) {
+    afterSummarizeBlock = `\n\n<upcoming_texts>\n${upcomingChunkContext}\n</upcoming_texts>\n\n`;
+  }
+  const finalUserPromptContent = contextPrompt + formattedReminderMessage + wrappedTextChunk + afterSummarizeBlock;
 
   let totalTokens = 0;
   if (summarySystemPrompt.trim()) {
@@ -231,9 +232,7 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
       combinedPromptPrefix += `<previous_texts>\n${previousChunkContext.trim()}\n</previous_texts>\n\n`;
   }
 
-  if (nextChunkContext && nextChunkContext.trim() !== "") {
-      combinedPromptPrefix += `\n\n<next_texts>\n${nextChunkContext.trim()}\n</next_texts>\n\n`;
-  }
+  // Do not include upcoming_texts before input; it will be placed right after input
 
   let entryReminderItself = "";
   if (typeof numberOfEntriesInChunk === 'number' && numberOfEntriesInChunk > 0) {
@@ -260,9 +259,9 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
 
   let userPromptContent = combinedPromptPrefix + wrappedTextsPart; // This is the final user prompt
   
-  // Add next_texts after the input block for actual translation
+  // Ensure a single upcoming_texts block immediately after input
   if (nextChunkContext && nextChunkContext.trim() !== "") {
-      userPromptContent += `\n\n<next_texts>\n${nextChunkContext.trim()}\n</next_texts>\n\n`;
+      userPromptContent += `\n\n<upcoming_texts>\n${nextChunkContext.trim()}\n</upcoming_texts>\n\n`;
   }
 
   const generationConfig = {
@@ -445,10 +444,6 @@ async function summarizeAndExtractTermsChunk(
   if (previousChunkContext) {
     contextPrompt += `<previous_texts>\n${previousChunkContext}\n</previous_texts>\n\n`;
   }
-  if (upcomingChunkContext) {
-    contextPrompt += `<upcoming_texts>\n${upcomingChunkContext}\n</upcoming_texts>\n\n`;
-  }
-
   const generationConfig = {
     temperature: geminiSettings.temperature,
     topP: geminiSettings.topP,
@@ -493,7 +488,12 @@ async function summarizeAndExtractTermsChunk(
     const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 50 important names/terminologies in {lang}.\n\n";
     const formattedReminderMessage = reminderMessageTemplate.replace(/{lang}/g, targetLanguageFullName || "the target language"); // Fallback if targetLanguageFullName is not provided
     const wrappedTextChunk = `<summarize_request>\n${textChunk}\n</summarize_request>`;
-    const finalUserPromptContent = contextPrompt + formattedReminderMessage + wrappedTextChunk;
+    // Place upcoming_texts immediately after summarize_request
+    let afterSummarizeBlock = "";
+    if (upcomingChunkContext) {
+      afterSummarizeBlock = `\n\n<upcoming_texts>\n${upcomingChunkContext}\n</upcoming_texts>\n\n`;
+    }
+    const finalUserPromptContent = contextPrompt + formattedReminderMessage + wrappedTextChunk + afterSummarizeBlock;
 
     console.debug(`[Gemini Summarize Request] Modified User Input:\n${finalUserPromptContent}`);
     console.debug(`[Gemini Summarize Request] Generation Config:\n${JSON.stringify(generationConfig, null, 2)}`);

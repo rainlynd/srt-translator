@@ -84,9 +84,8 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
         userPrompt += `<previous_texts>\n${previousChunkContext.trim()}\n</previous_texts>\n\n`;
     }
 
-    if (upcomingChunkContext) {
-        userPrompt += `<upcoming_texts>\n${upcomingChunkContext.trim()}\n</upcoming_texts>\n\n`;
-    }
+    // Debug: show whether nextChunkContext provided before first mention
+    console.debug(`[DeepSeek translateChunk] Contexts - previousChunkContext: ${previousChunkContext ? 'yes' : 'no'}, nextChunkContext: ${nextChunkContext ? 'yes' : 'no'}`);
 
     userPrompt += `Translate all ${numberOfEntriesInChunk} text segments in <input> section from {src} to {lang}.\n\n`;
     userPrompt = userPrompt.replace(/{lang}/g, targetLanguage).replace(/{src}/g, srcReplacementValue);
@@ -102,9 +101,9 @@ async function translateChunk(chunkOfOriginalTexts, targetLanguage, systemPrompt
     
     userPrompt += `<input>\n${textsForUserPromptContent}\n</input>`;
     
-    // Add next_texts after the input block
+    // Ensure a single upcoming_texts block immediately after input
     if (nextChunkContext && nextChunkContext.trim() !== "") {
-        userPrompt += `\n\n<next_texts>\n${nextChunkContext.trim()}\n</next_texts>\n\n`;
+        userPrompt += `\n\n<upcoming_texts>\n${nextChunkContext.trim()}\n</upcoming_texts>\n\n`;
     }
     
     messages.push({ role: 'user', content: userPrompt });
@@ -148,14 +147,15 @@ async function summarizeAndExtractTermsChunk(textChunk, summarySystemPrompt, gem
     if (previousChunkContext) {
         contextPrompt += `<previous_texts>\n${previousChunkContext}\n</previous_texts>\n\n`;
     }
-    if (upcomingChunkContext) {
-        contextPrompt += `<upcoming_texts>\n${upcomingChunkContext}\n</upcoming_texts>\n\n`;
-    }
-
     const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 50 important names/terminologies in {lang}.\n\n";
     const formattedReminderMessage = reminderMessageTemplate.replace(/{lang}/g, targetLanguageFullName || "the target language");
     const wrappedTextChunk = `<summarize_request>\n${textChunk}\n</summarize_request>`;
-    const finalUserPromptContent = contextPrompt + formattedReminderMessage + wrappedTextChunk;
+    // Place upcoming_texts immediately after summarize_request
+    let afterSummarizeBlock = "";
+    if (upcomingChunkContext) {
+        afterSummarizeBlock = `\n\n<upcoming_texts>\n${upcomingChunkContext}\n</upcoming_texts>\n\n`;
+    }
+    const finalUserPromptContent = contextPrompt + formattedReminderMessage + wrappedTextChunk + afterSummarizeBlock;
 
     const messages = [
         { role: 'system', content: summarySystemPrompt },
@@ -167,37 +167,25 @@ async function summarizeAndExtractTermsChunk(textChunk, summarySystemPrompt, gem
     console.debug(`[DeepSeek Summarize Request] Modified User Input:\n${finalUserPromptContent}`);
 
     try {
+        // Coerce/validate parameters to avoid provider 400s
+        const safeTemperature = (typeof geminiSettings.temperature === 'number' && geminiSettings.temperature >= 0 && geminiSettings.temperature <= 2)
+          ? geminiSettings.temperature
+          : 0.2;
+        const safeTopP = (typeof geminiSettings.topP === 'number' && geminiSettings.topP > 0 && geminiSettings.topP <= 1)
+          ? geminiSettings.topP
+          : 0.95;
+
+        console.debug(`[DeepSeek Summarize] Model: ${modelName} (alias: ${modelAlias})`);
+        console.debug(`[DeepSeek Summarize] Using response_format: json_object`);
+        console.debug(`[DeepSeek Summarize] temperature: ${safeTemperature} (from: ${geminiSettings.temperature}), top_p: ${safeTopP} (from: ${geminiSettings.topP})`);
+
         const response = await deepseekAI.chat.completions.create({
             model: modelName,
             messages: messages,
-            temperature: geminiSettings.temperature,
-            top_p: geminiSettings.topP,
-            response_format: {
-                type: 'json_schema',
-                json_schema: {
-                    name: 'summarization',
-                    strict: true,
-                    schema: {
-                        type: 'object',
-                        properties: {
-                            theme: { type: 'string' },
-                            terms: {
-                                type: 'array',
-                                items: {
-                                    type: 'object',
-                                    properties: {
-                                        src: { type: 'string' },
-                                        tgt: { type: 'string' },
-                                        note: { type: 'string' }
-                                    },
-                                    required: ['src', 'tgt', 'note']
-                                }
-                            }
-                        },
-                        required: ['theme', 'terms']
-                    }
-                }
-            },
+            temperature: safeTemperature,
+            top_p: safeTopP,
+            // Provider does not support json_schema on chat.completions; use json_object for structured output
+            response_format: { type: 'json_object' },
         }, { signal: abortSignal });
 
         // Parse and validate content
@@ -273,9 +261,9 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
         combinedPromptPrefix += `<previous_texts>\n${previousChunkContext.trim()}\n</previous_texts>\n\n`;
     }
 
-    if (upcomingChunkContext) {
-        combinedPromptPrefix += `<upcoming_texts>\n${upcomingChunkContext.trim()}\n</upcoming_texts>\n\n`;
-    }
+    // Debug: token estimation contexts
+    console.debug(`[DeepSeek estimateInputTokensForTranslation] Contexts - previousChunkContext: ${previousChunkContext ? 'yes' : 'no'}, nextChunkContext: ${nextChunkContext ? 'yes' : 'no'}`);
+    // Do not put upcoming_texts before input; it will be placed right after input below
 
     let entryReminderItself = "";
     if (typeof numberOfEntriesInChunk === 'number' && numberOfEntriesInChunk > 0) {
@@ -301,9 +289,9 @@ async function estimateInputTokensForTranslation(chunkOfOriginalTexts, targetLan
     
     let finalUserPromptForEstimation = combinedPromptPrefix + wrappedTextsPart;
     
-    // Add next_texts after the input block for token estimation
+    // Add upcoming_texts after the input block for token estimation
     if (nextChunkContext && nextChunkContext.trim() !== "") {
-        finalUserPromptForEstimation += `\n\n<next_texts>\n${nextChunkContext.trim()}\n</next_texts>\n\n`;
+        finalUserPromptForEstimation += `\n\n<upcoming_texts>\n${nextChunkContext.trim()}\n</upcoming_texts>\n\n`;
     }
 
     const systemTokens = await countTokens(processedSystemPrompt);
@@ -324,14 +312,16 @@ async function estimateInputTokensForSummarization(textChunk, summarySystemPromp
     if (previousChunkContext) {
         contextPrompt += `<previous_texts>\n${previousChunkContext}\n</previous_texts>\n\n`;
     }
-    if (upcomingChunkContext) {
-        contextPrompt += `<upcoming_texts>\n${upcomingChunkContext}\n</upcoming_texts>\n\n`;
-    }
 
     const reminderMessageTemplate = "Analyze the subtitles within <summarize_request> section, then extract and translate the theme and up to 50 important names/terminologies in {lang}.\n\n";
     const formattedReminderMessage = reminderMessageTemplate.replace(/{lang}/g, targetLanguageFullName || "the target language");
     const wrappedTextChunk = `<summarize_request>\n${textChunk}\n</summarize_request>`;
-    const finalUserPromptContent = contextPrompt + formattedReminderMessage + wrappedTextChunk;
+    // Place upcoming_texts immediately after summarize_request for estimation too
+    let afterSummarizeBlock = "";
+    if (upcomingChunkContext) {
+        afterSummarizeBlock = `\n\n<upcoming_texts>\n${upcomingChunkContext}\n</upcoming_texts>\n\n`;
+    }
+    const finalUserPromptContent = contextPrompt + formattedReminderMessage + wrappedTextChunk + afterSummarizeBlock;
 
     const systemTokens = await countTokens(summarySystemPrompt);
     const userTokens = await countTokens(finalUserPromptContent);

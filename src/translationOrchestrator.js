@@ -96,10 +96,9 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
           effectiveSystemPrompt, // Use system prompt with summary
           originalChunk.length, // Pass the number of entries in the chunk
           contextToPassToGemini,
-          nextChunkContext,      // new parameter
+          nextChunkContext,      // pass as next context
           'primary', // Use primary model for initial GFC estimation
-          sourceLanguageNameForPrompt, // Pass for {src} placeholder
-          upcomingChunkContext // Pass upcoming chunk context for token estimation
+          sourceLanguageNameForPrompt // Pass for {src} placeholder
         );
         logCallback(Date.now(), `Chunk ${chunkIndex + 1} (File: ${filePathForLogging}, Job: ${jobId}) - Estimated input tokens for GFC (using primary model alias): ${estimatedInputTokensForGFC}`, 'debug');
       } catch (estimationError) {
@@ -158,11 +157,10 @@ async function processSingleChunkWithRetries(originalChunk, chunkIndex, targetLa
                 originalChunk.length,
                 settings.abortSignal, // Assuming settings might carry an AbortSignal for the job
                 contextToPassToGemini, // previous context
-                nextChunkContext,      // new next context
+                nextChunkContext,      // next context
                 effectiveThinkingBudget, // Pass the conditionally set thinkingBudget
                 modelAliasToUse, // Pass the determined model alias
-                sourceLanguageNameForPrompt, // Pass for {src} placeholder
-                upcomingChunkContext // Pass upcoming chunk context
+                sourceLanguageNameForPrompt // Pass for {src} placeholder
             );
             
             const { translatedResponseArray, actualInputTokens, outputTokens } = geminiResult;
