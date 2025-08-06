@@ -6,7 +6,6 @@ module.exports = {
     asar: true,
     extraResource: [
       "./src/python",
-      "./.venv",
       "./requirements.txt"
     ]
   },

@@ -107,3 +107,5 @@ foreign/
 tests/
 
 .roo/
+
+repomix-output.xml
