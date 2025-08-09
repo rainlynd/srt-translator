@@ -94,16 +94,8 @@ out/
 # Python Virtual Environment
 .venv/
 
-faster-large-v3-turbo/
-
-ffmpeg/
-
-advanced_translator_pipeline/
-
-foreign/
-
-.pytest_cache/
-
-tests/
-
 .roo/
+
+GEMINI.md 
+
+.qwen/
